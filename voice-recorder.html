@@ -805,6 +805,11 @@ input  { font: inherit; color: inherit; }
           <option value="">Загрузка голосов...</option>
         </select>
       </div>
+      <div style="display:flex; gap:var(--space-2); align-items:center;">
+        <label for="ttsRate" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Скорость:</label>
+        <input type="range" id="ttsRate" min="0.25" max="2.0" step="0.1" value="1.0" style="flex:1;" oninput="ttsRateLabel.innerHTML = ttsRate.value">
+        <span id="ttsRateLabel" style="font-size:var(--text-xs); color:var(--text-muted); min-width:2.5em; text-align:right;">1.0</span>
+      </div>
       <textarea id="ttsText" class="chat-prompt-textarea" style="min-height:120px; max-height:300px;" placeholder="Введите текст для озвучивания..." aria-label="Текст для озвучивания"></textarea>
       <div style="display:flex; gap:var(--space-2);">
         <button class="btn-action" id="btnTtsSpeak" style="flex:1; background:var(--primary); color:#fff; border-color:var(--primary);">
@@ -1500,6 +1505,8 @@ const ttsVoiceSelect = document.getElementById('ttsVoiceSelect');
 const btnTtsSpeak   = document.getElementById('btnTtsSpeak');
 const btnTtsStop    = document.getElementById('btnTtsStop');
 const ttsStatus     = document.getElementById('ttsStatus');
+const ttsRate       = document.getElementById('ttsRate');
+const ttsRateLabel  = document.getElementById('ttsRateLabel');
 
 let ttsVoices = [];
 let ttsSpeaking = false;
@@ -1537,7 +1544,7 @@ function speakText() {
   const voice = !isNaN(idx) && ttsVoices[idx] ? ttsVoices[idx] : null;
   const utter = new SpeechSynthesisUtterance(text);
   if (voice) utter.voice = voice;
-  utter.rate = 1.0;
+  utter.rate = ttsRate.value;
   utter.pitch = 1.0;
   utter.onstart = () => {
     ttsSpeaking = true;
