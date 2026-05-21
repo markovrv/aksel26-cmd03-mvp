@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Voice Stream</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
+  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
+  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);
+  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);
+  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);
+
+  --space-1: 0.25rem; --space-2: 0.5rem;  --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem;  --space-8: 2rem;    --space-10: 2.5rem;
+  --space-12: 3rem;   --space-16: 4rem;
+
+  --radius-sm: 0.375rem; --radius-md: 0.5rem; --radius-lg: 0.75rem;
+  --radius-xl: 1rem;     --radius-full: 9999px;
+
+  --transition: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root, [data-theme="light"] {
+  --bg:        #f7f6f2;
+  --surface:   #f9f8f5;
+  --surface-2: #fbfbf9;
+  --surface-off: #f0ede8;
+  --divider:   #dcd9d5;
+  --border:    oklch(0.3 0.01 80 / 0.12);
+  --text:      #28251d;
+  --text-muted:#7a7974;
+  --text-faint:#bab9b4;
+  --primary:   #01696f;
+  --primary-h: #0c4e54;
+  --primary-hl:#cedcd8;
+  --success:   #437a22;
+  --error:     #a12c7b;
+  --shadow-sm: 0 1px 2px oklch(0.2 0.01 80 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0.2 0.01 80 / 0.10);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.01 80 / 0.14);
+}
+
+[data-theme="dark"] {
+  --bg:        #0f0e0c;
+  --surface:   #161513;
+  --surface-2: #1c1b19;
+  --surface-off:#1e1d1b;
+  --divider:   #242320;
+  --border:    oklch(1 0 0 / 0.08);
+  --text:      #d4d3d1;
+  --text-muted:#79786e;
+  --text-faint:#4a4945;
+  --primary:   #4f98a3;
+  --primary-h: #6eb4be;
+  --primary-hl:#2a3a3b;
+  --success:   #6daa45;
+  --error:     #d163a7;
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.3);
+  --shadow-md: 0 4px 16px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 16px 40px oklch(0 0 0 / 0.5);
+}
+
+/* ── Reset & Base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html {
+  -webkit-text-size-adjust: none; text-size-adjust: none;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+  scroll-behavior: smooth;
+}
+body {
+  min-height: 100dvh;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+input  { font: inherit; color: inherit; }
+::selection { background: oklch(from var(--primary) l c h / 0.25); }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ── Layout ────────────────────────────────────────────────── */
+.app { display: flex; flex-direction: column; min-height: 100dvh; }
+
+/* ── Header ────────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: color-mix(in oklab, var(--bg) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-3) var(--space-4);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo { display: flex; align-items: center; gap: var(--space-2); }
+.logo-icon { color: var(--primary); flex-shrink: 0; }
+.logo-text { font-size: var(--text-sm); font-weight: 600; letter-spacing: -0.01em; }
+.header-actions { display: flex; align-items: center; gap: var(--space-2); }
+.btn-icon {
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); transition: background var(--transition), color var(--transition);
+}
+.btn-icon:hover { background: var(--surface-off); color: var(--text); }
+.btn-icon:active { background: var(--divider); }
+
+/* ── Main ──────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  padding: var(--space-6) var(--space-4) var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-4);
+  max-width: 640px; margin-inline: auto; width: 100%;
+}
+
+/* ── Connection Panel ──────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+.panel-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.url-row {
+  display: flex; gap: var(--space-2); align-items: center;
+}
+.url-input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.url-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.15);
+}
+.btn-connect {
+  padding: var(--space-2) var(--space-4);
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--transition), transform var(--transition);
+  flex-shrink: 0;
+  min-width: 44px; min-height: 44px;
+}
+.btn-connect:hover  { background: var(--primary-h); }
+.btn-connect:active { transform: scale(0.97); }
+.btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+.conn-status {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: var(--radius-full);
+  background: var(--text-faint);
+  flex-shrink: 0;
+  transition: background 0.4s;
+}
+.conn-dot.connecting { background: #e8a020; animation: pulse-dot 1s infinite; }
+.conn-dot.connected  { background: var(--success); }
+.conn-dot.reconnecting { background: #e8a020; animation: pulse-dot 0.6s infinite; }
+.conn-dot.error      { background: var(--error); }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ── Record Panel ──────────────────────────────────────────── */
+.record-panel {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-6); padding: var(--space-8) var(--space-4);
+}
+
+/* Mic Button */
+.mic-btn-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+.mic-ring {
+  position: absolute;
+  width: 100px; height: 100px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--primary);
+  opacity: 0;
+  transform: scale(1);
+  pointer-events: none;
+}
+.mic-btn-wrap.recording .mic-ring {
+  animation: ring-out 1.2s ease-out infinite;
+}
+@keyframes ring-out {
+  0%   { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.9); }
+}
+.mic-btn {
+  width: 80px; height: 80px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-md);
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform 80ms ease;
+  position: relative; z-index: 1;
+}
+.mic-btn:hover:not(:disabled) {
+  background: var(--surface-off);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.mic-btn:active:not(:disabled) { transform: scale(0.94); }
+.mic-btn.recording {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-lg), 0 0 0 4px oklch(from var(--primary) l c h / 0.2);
+}
+.mic-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Status label */
+.status-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 1.5em;
+  transition: color var(--transition);
+}
+.status-label.active { color: var(--primary); }
+.status-label.processing { color: var(--text-muted); }
+.status-label.reconnecting { color: #e8a020; }
+
+/* Volume Bar */
+.volume-bar-wrap {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  height: 6px;
+  overflow: hidden;
+}
+.volume-bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  width: 0%;
+  transition: width 80ms ease;
+}
+.volume-label {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* ── Action Buttons Row ────────────────────────────────────── */
+.action-row {
+  display: flex; gap: var(--space-2); flex-wrap: wrap;
+}
+.btn-action {
+  flex: 1; min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: background var(--transition), color var(--transition);
+  min-height: 44px;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  white-space: nowrap;
+}
+.btn-action:hover { background: var(--surface-off); color: var(--text); }
+.btn-action:active { background: var(--divider); }
+.btn-action:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Transcript Area ───────────────────────────────────────── */
+.transcript-wrap {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: var(--space-2);
+}
+.transcript-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.transcript-scroll {
+  min-height: 180px;
+  max-height: 50dvh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  box-shadow: var(--shadow-sm);
+  scroll-behavior: smooth;
+}
+.transcript-scroll::-webkit-scrollbar { width: 4px; }
+.transcript-scroll::-webkit-scrollbar-track { background: transparent; }
+.transcript-scroll::-webkit-scrollbar-thumb { background: var(--divider); border-radius: var(--radius-full); }
+.transcript-empty {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-8) 0;
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+}
+.transcript-empty svg { color: var(--text-faint); opacity: 0.4; }
+.transcript-entry {
+  margin-bottom: var(--space-3);
+  animation: slide-up 0.25s ease;
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.entry-time {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+.entry-text { color: var(--text); }
+
+.btn-copy {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  transition: background var(--transition), color var(--transition);
+  min-height: 44px; min-width: 44px;
+  display: flex; align-items: center; gap: 4px;
+}
+.btn-copy:hover { background: var(--surface-off); color: var(--text); }
+.btn-copy:active { background: var(--divider); }
+
+/* ── Footer ────────────────────────────────────────────────── */
+.footer {
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Inline error ──────────────────────────────────────────── */
+.error-bar {
+  background: oklch(from var(--error) l c h / 0.12);
+  color: var(--error);
+  border: 1px solid oklch(from var(--error) l c h / 0.25);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  display: none;
+}
+.error-bar.visible { display: block; animation: slide-up 0.2s ease; }
+
+/* ── Success info bar ──────────────────────────────────────── */
+.info-bar {
+  background: oklch(from var(--success) l c h / 0.12);
+  color: var(--success);
+  border: 1px solid oklch(from var(--success) l c h / 0.25);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  display: none;
+}
+.info-bar.visible { display: block; animation: slide-up 0.2s ease; }
+
+/* ── Modal overlay ─────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 200;
+  background: oklch(0 0 0 / 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  justify-content: center; align-items: center;
+  padding: var(--space-4);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  max-width: 540px; width: 100%;
+  max-height: 80dvh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: slide-up 0.2s ease;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-4); border-bottom: 1px solid var(--border);
+}
+.modal-title { font-size: var(--text-sm); font-weight: 600; }
+.modal-close {
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); transition: background var(--transition);
+}
+.modal-close:hover { background: var(--surface-off); }
+.modal-body {
+  flex: 1; overflow-y: auto;
+  padding: var(--space-2);
+  min-height: 200px;
+}
+.modal-body::-webkit-scrollbar { width: 4px; }
+.modal-body::-webkit-scrollbar-thumb { background: var(--divider); border-radius: var(--radius-full); }
+
+/* File list in modal */
+.file-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background var(--transition);
+  cursor: pointer;
+}
+.file-item:hover { background: var(--surface-off); }
+.file-icon { color: var(--primary); flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-name {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-meta {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.file-delete-btn {
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-faint); transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+.file-delete-btn:hover { background: oklch(from var(--error) l c h / 0.15); color: var(--error); }
+
+.file-empty {
+  text-align: center; padding: var(--space-8) var(--space-4);
+  color: var(--text-faint); font-size: var(--text-sm);
+}
+
+/* ── Chat message styles ───────────────────────────────────── */
+.chat-body {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+}
+.chat-msg {
+  display: flex; flex-direction: column;
+  max-width: 85%;
+  animation: slide-up 0.2s ease;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chat-msg.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+.chat-msg.system {
+  align-self: center;
+  font-style: italic;
+}
+.chat-bubble {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-msg.user .chat-bubble {
+  background: var(--primary);
+  color: #fff;
+  border-bottom-right-radius: var(--radius-sm);
+}
+.chat-msg.assistant .chat-bubble {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.chat-msg.system .chat-bubble {
+  background: oklch(from var(--text-muted) l c h / 0.1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.chat-role {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  margin: 2px var(--space-2) 0;
+}
+.chat-prompt-area {
+  display: none;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.chat-prompt-area.open { display: block; }
+.chat-prompt-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.chat-prompt-textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  resize: vertical;
+  min-height: 60px;
+  max-height: 200px;
+  transition: border-color var(--transition);
+}
+.chat-prompt-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.chat-header-btn {
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+.chat-header-btn:hover { background: var(--surface-off); color: var(--text); }
+
+.chat-input-row {
+  display: flex; gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.chat-input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+  transition: border-color var(--transition);
+}
+.chat-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.chat-send-btn {
+  width: 44px; height: 44px; border-radius: var(--radius-full);
+  background: var(--primary);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--transition), transform var(--transition);
+}
+.chat-send-btn:hover { background: var(--primary-h); }
+.chat-send-btn:active { transform: scale(0.93); }
+.chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-loading {
+  text-align: center; color: var(--text-faint);
+  font-size: var(--text-xs); padding: var(--space-4);
+}
+
+/* File content viewer */
+.file-content {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  padding: var(--space-3);
+  color: var(--text);
+}
+.file-content-back {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs); color: var(--text-muted);
+  border-radius: var(--radius-md);
+  transition: background var(--transition);
+}
+.file-content-back:hover { background: var(--surface-off); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <svg class="logo-icon" aria-label="Voice Stream" width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="8" fill="currentColor" opacity="0.12"/>
+        <path d="M14 7a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z" fill="currentColor"/>
+        <path d="M9 15a5 5 0 0 0 10 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        <line x1="14" y1="20" x2="14" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="11" y1="23" x2="17" y2="23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span class="logo-text">Voice Stream</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" id="btnTranscripts" aria-label="Стенограммы" title="Стенограммы">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="btnTts" aria-label="Речь" title="Речь">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="btnLlmChat" aria-label="LLM чат" title="LLM чат">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a8 8 0 0 0-8 8c0 3.5 2 6.5 5 8l-1 4 3-2.5c.5.1 1 .2 1 .2a8 8 0 1 0 0-16z"/>
+          <path d="M9 11h6"/><path d="M9 14h3"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="themeToggle" aria-label="Сменить тему" title="Сменить тему">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Connection -->
+    <section class="panel" aria-label="Подключение к серверу">
+      <div class="panel-title">Сервер</div>
+      <div class="url-row">
+        <input
+          class="url-input"
+          id="wsUrl"
+          type="url"
+          value="ws://192.168.1.100:8765"
+          data-default="ws://192.168.1.100:8765"
+          placeholder="ws://192.168.x.x:8765"
+          aria-label="WebSocket URL сервера"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button class="btn-connect" id="btnConnect" aria-label="Подключиться">
+          Подключить
+        </button>
+      </div>
+      <div class="conn-status" role="status" aria-live="polite">
+        <span class="conn-dot" id="connDot"></span>
+        <span id="connText">Не подключено</span>
+      </div>
+      <div class="error-bar" id="errorBar"></div>
+      <div class="info-bar" id="infoBar"></div>
+    </section>
+
+    <!-- Record -->
+    <section class="panel" aria-label="Запись голоса">
+      <div class="panel-title">Запись</div>
+      <div class="record-panel">
+        <div class="mic-btn-wrap" id="micWrap">
+          <div class="mic-ring" id="micRing"></div>
+          <button class="mic-btn" id="btnMic" disabled aria-label="Начать запись" title="Начать запись">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+              <path d="M19 10a7 7 0 0 1-14 0" stroke-linecap="round"/>
+              <line x1="12" y1="17" x2="12" y2="21" stroke-linecap="round"/>
+              <line x1="8"  y1="21" x2="16" y2="21" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="status-label" id="statusLabel">Подключитесь к серверу</div>
+        <div style="width:100%; display:flex; flex-direction:column; gap: var(--space-2);">
+          <div class="volume-bar-wrap" role="meter" aria-label="Уровень звука" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div class="volume-bar" id="volumeBar"></div>
+          </div>
+          <span class="volume-label" id="volumeLabel">— rms</span>
+        </div>
+      </div>
+    </section>
+
+
+
+    <!-- Transcript -->
+    <section class="transcript-wrap" aria-label="Текст распознавания">
+      <div class="transcript-header">
+        <div class="panel-title" style="margin-bottom:0">Транскрипция</div>
+        <button class="btn-copy" id="btnCopy" aria-label="Скопировать всё">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Копировать
+        </button>
+      </div>
+      <div class="transcript-scroll" id="transcriptScroll" role="log" aria-live="polite" aria-label="Распознанный текст">
+        <div class="transcript-empty" id="transcriptEmpty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25">
+            <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+            <path d="M19 10a7 7 0 0 1-14 0"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+            <line x1="8"  y1="21" x2="16" y2="21"/>
+          </svg>
+          <span>Распознанный текст появится здесь</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Action buttons -->
+    <div class="action-row">
+      <button class="btn-action" id="btnSaveTranscript" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Сохранить
+      </button>
+      <button class="btn-action" id="btnClearTranscript" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        Очистить
+      </button>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    Voice Stream · faster-whisper · WebSocket
+  </footer>
+</div>
+
+<!-- ── Modal: Transcript files ──────────────────────────────── -->
+<div class="modal-overlay" id="transcriptModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Файлы стенограмм">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">Файлы стенограмм</span>
+      <button class="modal-close" id="modalClose" aria-label="Закрыть">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <!-- Dynamic content -->
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: TTS Speech ───────────────────────────────────── -->
+<div class="modal-overlay" id="ttsModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Озвучивание текста">
+    <div class="modal-header">
+      <span class="modal-title">Озвучивание речи</span>
+      <button class="modal-close" id="ttsModalClose" aria-label="Закрыть">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); min-height:auto;">
+      <div style="display:flex; gap:var(--space-2); align-items:center;">
+        <label for="ttsVoiceSelect" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
+        <select id="ttsVoiceSelect" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-2); font-size:var(--text-sm); color:var(--text);">
+          <option value="">Загрузка голосов...</option>
+        </select>
+      </div>
+      <textarea id="ttsText" class="chat-prompt-textarea" style="min-height:120px; max-height:300px;" placeholder="Введите текст для озвучивания..." aria-label="Текст для озвучивания"></textarea>
+      <div style="display:flex; gap:var(--space-2);">
+        <button class="btn-action" id="btnTtsSpeak" style="flex:1; background:var(--primary); color:#fff; border-color:var(--primary);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Озвучить
+        </button>
+        <button class="btn-action" id="btnTtsStop" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+          </svg>
+          Стоп
+        </button>
+      </div>
+      <div style="font-size:var(--text-xs); color:var(--text-faint); text-align:center;" id="ttsStatus">Готов</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: LLM Chat ─────────────────────────────────────── -->
+<div class="modal-overlay" id="llmModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="LLM чат">
+    <div class="modal-header">
+      <span class="modal-title">LLM чат</span>
+      <div style="display:flex; gap:var(--space-1);">
+        <button class="chat-header-btn" id="btnTogglePrompt" aria-label="Системный промпт" title="Системный промпт">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button class="chat-header-btn" id="btnClearChat" aria-label="Очистить историю" title="Очистить историю">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+        <button class="modal-close" id="llmModalClose" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="chat-prompt-area" id="chatPromptArea">
+      <div class="chat-prompt-label">Системный промпт (отправляется с каждым сообщением)</div>
+      <textarea class="chat-prompt-textarea" id="chatPromptInput" placeholder="Введите системный промпт..." aria-label="Системный промпт"></textarea>
+    </div>
+    <div class="modal-body" id="llmModalBody">
+      <div class="chat-body" id="chatMessages">
+        <div class="chat-msg system">
+          <div class="chat-bubble">Отправьте сообщение LLM. Ответ придёт от сервера.</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <textarea class="chat-input" id="chatInput" rows="1" placeholder="Напишите сообщение LLM..." aria-label="Сообщение для LLM"></textarea>
+      <button class="chat-send-btn" id="chatSendBtn" aria-label="Отправить">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Theme toggle ─────────────────────────────────────────────
+(function(){
+  const html = document.documentElement;
+  const btn  = document.getElementById('themeToggle');
+  let dark = false;
+  html.setAttribute('data-theme', 'light');
+  btn.addEventListener('click', () => {
+    dark = !dark;
+    html.setAttribute('data-theme', dark ? 'dark' : 'light');
+    btn.setAttribute('aria-label', dark ? 'Светлая тема' : 'Тёмная тема');
+    btn.innerHTML = dark
+      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
+  });
+})();
+
+// ── Auto-detect WS URL when page is served from the server ──
+(function() {
+  const input = document.getElementById('wsUrl');
+  const loc = window.location;
+  if (loc.protocol === 'http:' || loc.protocol === 'https:') {
+    const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    input.value = `${wsProto}//${loc.host}`;
+  }
+})();
+
+// ── App State ────────────────────────────────────────────────
+const state = {
+  ws:          null,
+  recording:   false,
+  wasRecording:false,  // для восстановления после переподключения
+  mediaStream: null,
+  processor:   null,
+  audioCtx:    null,
+  entries:     [],
+  sessionId:   null,
+  reconnectAttempt: 0,
+  maxReconnectDelay: 15000,
+  pendingSave: false,
+};
+
+// ── DOM refs ─────────────────────────────────────────────────
+const wsUrlEl     = document.getElementById('wsUrl');
+const btnConnect  = document.getElementById('btnConnect');
+const connDot     = document.getElementById('connDot');
+const connText    = document.getElementById('connText');
+const errorBar    = document.getElementById('errorBar');
+const infoBar     = document.getElementById('infoBar');
+const btnMic      = document.getElementById('btnMic');
+const micWrap     = document.getElementById('micWrap');
+const statusLabel = document.getElementById('statusLabel');
+const volumeBar   = document.getElementById('volumeBar');
+const volumeLabel = document.getElementById('volumeLabel');
+const tScroll     = document.getElementById('transcriptScroll');
+const tEmpty      = document.getElementById('transcriptEmpty');
+const btnCopy     = document.getElementById('btnCopy');
+const btnSave     = document.getElementById('btnSaveTranscript');
+const btnClear    = document.getElementById('btnClearTranscript');
+const btnTranscripts = document.getElementById('btnTranscripts');
+const modalOverlay  = document.getElementById('transcriptModal');
+const modalClose    = document.getElementById('modalClose');
+const modalTitle    = document.getElementById('modalTitle');
+const modalBody     = document.getElementById('modalBody');
+
+// ── Helpers ──────────────────────────────────────────────────
+function showError(msg) {
+  errorBar.textContent = msg;
+  errorBar.classList.add('visible');
+  setTimeout(() => errorBar.classList.remove('visible'), 6000);
+}
+function showInfo(msg) {
+  infoBar.textContent = msg;
+  infoBar.classList.add('visible');
+  setTimeout(() => infoBar.classList.remove('visible'), 4000);
+}
+function setConnStatus(status, text) {
+  connDot.className = 'conn-dot ' + status;
+  connText.textContent = text;
+}
+function setStatus(text, cls = '') {
+  statusLabel.textContent = text;
+  statusLabel.className = 'status-label ' + cls;
+}
+function addEntry(text) {
+  tEmpty.style.display = 'none';
+  const now = new Date();
+  const time = now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const entry = { time, text };
+  state.entries.push(entry);
+
+  const div = document.createElement('div');
+  div.className = 'transcript-entry';
+  div.innerHTML = `<div class="entry-time">${time}</div><div class="entry-text">${escapeHtml(text)}</div>`;
+  tScroll.appendChild(div);
+  tScroll.scrollTop = tScroll.scrollHeight;
+
+  // Enable action buttons
+  btnSave.disabled = false;
+  btnClear.disabled = false;
+}
+function escapeHtml(s) {
+  return s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+}
+function setVolume(rms) {
+  const pct = Math.min(100, Math.round(rms / 30));
+  volumeBar.style.width = pct + '%';
+  volumeBar.closest('[aria-valuenow]')?.setAttribute('aria-valuenow', pct);
+  volumeLabel.textContent = `rms ${rms}`;
+}
+function getTranscriptText() {
+  return state.entries.map(e => `[${e.time}] ${e.text}`).join('\n');
+}
+
+// ── Modal: Transcript File Browser ───────────────────────────
+function openFileBrowser() {
+  modalTitle.textContent = 'Файлы стенограмм';
+  modalBody.innerHTML = '<div class="file-empty">Загрузка...</div>';
+  modalOverlay.classList.add('open');
+  requestFileList();
+}
+
+function closeModal() {
+  modalOverlay.classList.remove('open');
+}
+
+function requestFileList() {
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ action: 'list_transcripts' }));
+  }
+}
+
+function renderFileList(files) {
+  if (!files || files.length === 0) {
+    modalBody.innerHTML = '<div class="file-empty">Нет сохранённых стенограмм</div>';
+    return;
+  }
+  let html = '';
+  for (const f of files) {
+    const sizeStr = f.size > 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`;
+    const dateStr = new Date(f.modified).toLocaleString('ru');
+    html += `
+      <div class="file-item" data-filename="${escapeHtml(f.name)}">
+        <svg class="file-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <div class="file-info">
+          <div class="file-name">${escapeHtml(f.name)}</div>
+          <div class="file-meta">${dateStr} · ${sizeStr}</div>
+        </div>
+        <button class="file-delete-btn" data-filename="${escapeHtml(f.name)}" aria-label="Удалить ${escapeHtml(f.name)}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+    `;
+  }
+  modalBody.innerHTML = html;
+
+  // Click to view file
+  modalBody.querySelectorAll('.file-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.file-delete-btn')) return;
+      const fname = el.dataset.filename;
+      requestFileContent(fname);
+    });
+  });
+
+  // Delete button
+  modalBody.querySelectorAll('.file-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fname = btn.dataset.filename;
+      if (confirm(`Удалить файл «${fname}»?`)) {
+        requestFileDelete(fname);
+      }
+    });
+  });
+}
+
+function requestFileContent(filename) {
+  modalTitle.textContent = filename;
+  modalBody.innerHTML = '<div class="file-empty">Загрузка...</div>';
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ action: 'get_transcript', filename }));
+  }
+}
+
+function renderFileContent(filename, content) {
+  modalBody.innerHTML = `
+    <button class="file-content-back" id="backToList">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      Назад к списку
+    </button>
+    <div class="file-content">${escapeHtml(content)}</div>
+  `;
+  document.getElementById('backToList').addEventListener('click', () => {
+    modalTitle.textContent = 'Файлы стенограмм';
+    requestFileList();
+  });
+}
+
+function requestFileDelete(filename) {
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ action: 'delete_transcript', filename }));
+  }
+}
+
+// Modal events
+btnTranscripts.addEventListener('click', openFileBrowser);
+modalClose.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) closeModal();
+});
+
+// ── WebSocket connection with auto-reconnect ─────────────────
+function connect() {
+  const url = wsUrlEl.value.trim();
+  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+    showError('URL должен начинаться с ws:// или wss://');
+    return;
+  }
+  if (state.ws) {
+    state.ws.onclose = null;
+    state.ws.onerror = null;
+    state.ws.close();
+    state.ws = null;
+  }
+
+  setConnStatus('connecting', 'Подключаюсь…');
+  btnConnect.disabled = true;
+  btnConnect.textContent = '…';
+
+  state.ws = new WebSocket(url);
+  state.ws.binaryType = 'arraybuffer';
+
+  state.ws.onopen = () => {
+    setConnStatus('connected', 'Подключено');
+    btnConnect.textContent = 'Отключить';
+    btnConnect.disabled = false;
+    btnMic.disabled = false;
+
+    state.reconnectAttempt = 0;
+
+    // Если мы переподключаемся и шла запись — возобновляем
+    if (state.wasRecording) {
+      setStatus('Переподключено, возобновляю запись...', 'reconnecting');
+      // Небольшая задержка, чтобы сервер успел обработать reconnect
+      setTimeout(() => startRecording(), 500);
+    } else {
+      setStatus('Готов к записи');
+    }
+  };
+
+  state.ws.onclose = (event) => {
+    const wasConnected = connDot.classList.contains('connected');
+    setConnStatus('', 'Не подключено');
+    btnConnect.textContent = 'Подключить';
+    btnConnect.disabled = false;
+    btnMic.disabled = true;
+    btnSave.disabled = true;
+    btnClear.disabled = true;
+
+    if (state.recording) {
+      state.wasRecording = true;
+      stopRecording();
+    }
+
+    setStatus('Подключитесь к серверу');
+
+    // Auto-reconnect if was previously connected or was recording
+    if (wasConnected || state.wasRecording) {
+      scheduleReconnect();
+    }
+  };
+
+  state.ws.onerror = () => {
+    // onclose will fire after onerror
+  };
+
+  state.ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'session') {
+        state.sessionId = msg.session_id;
+      } else if (msg.type === 'level') {
+        setVolume(msg.rms);
+      } else if (msg.type === 'transcript') {
+        addEntry(msg.text);
+        setStatus('Готов к записи');
+      } else if (msg.type === 'status') {
+        setStatus(msg.text, msg.text.includes('Распо') ? 'processing' : '');
+      } else if (msg.type === 'error') {
+        showError(msg.text);
+        setStatus('Ошибка распознавания');
+      } else if (msg.type === 'file_saved') {
+        showInfo(`Стенограмма сохранена: ${msg.filename}`);
+        setStatus('Готов к записи');
+        state.pendingSave = false;
+      } else if (msg.type === 'transcript_list') {
+        renderFileList(msg.files);
+      } else if (msg.type === 'transcript_content') {
+        renderFileContent(msg.filename, msg.content);
+      } else if (msg.type === 'file_deleted') {
+        showInfo(`Файл «${msg.filename}» удалён`);
+        requestFileList(); // refresh list
+      } else if (msg.type === 'reconnect_ack') {
+        // Server acknowledged reconnect
+      } else if (msg.type === 'chat_response') {
+        hideChatLoading();
+        if (msg.error) {
+          addChatMessage('system', 'Ошибка: ' + msg.error);
+        } else if (msg.response) {
+          addChatMessage('assistant', msg.response);
+          llmHistory.push({ role: 'assistant', content: msg.response });
+        }
+      }
+    } catch {}
+  };
+}
+
+function scheduleReconnect() {
+  if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
+    return; // already connected/connecting
+  }
+  state.reconnectAttempt++;
+  const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempt), state.maxReconnectDelay);
+  setConnStatus('reconnecting', `Переподключение через ${Math.round(delay / 1000)}с...`);
+  setStatus('Потеряно соединение, переподключаюсь...', 'reconnecting');
+  setTimeout(() => {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      connect();
+    }
+  }, delay);
+}
+
+function disconnect() {
+  state.wasRecording = false;
+  state.reconnectAttempt = 0;
+  if (state.recording) stopRecording();
+  if (state.ws) {
+    state.ws.onclose = null; // prevent auto-reconnect
+    state.ws.close();
+    state.ws = null;
+  }
+}
+
+btnConnect.addEventListener('click', () => {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    disconnect();
+  } else {
+    state.reconnectAttempt = 0;
+    connect();
+  }
+});
+
+// ── Audio capture & streaming ────────────────────────────────
+const SAMPLE_RATE   = 16000;
+const FRAME_SIZE    = 4096;
+const CHUNK_PERIOD  = 250;
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showError('Браузер не поддерживает захват микрофона');
+    return;
+  }
+  try {
+    state.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: SAMPLE_RATE, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+  } catch (err) {
+    showError('Нет доступа к микрофону: ' + err.message);
+    state.wasRecording = false;
+    return;
+  }
+
+  state.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+  const source = state.audioCtx.createMediaStreamSource(state.mediaStream);
+
+  state.processor = state.audioCtx.createScriptProcessor(FRAME_SIZE, 1, 1);
+
+  let pcmBuffer = [];
+  let lastFlush = Date.now();
+
+  state.processor.onaudioprocess = (e) => {
+    const f32 = e.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      let s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    pcmBuffer.push(i16.buffer);
+
+    const now = Date.now();
+    if (now - lastFlush >= CHUNK_PERIOD) {
+      lastFlush = now;
+      const total = pcmBuffer.reduce((n, b) => n + b.byteLength, 0);
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const buf of pcmBuffer) { merged.set(new Uint8Array(buf), offset); offset += buf.byteLength; }
+      pcmBuffer = [];
+      if (state.ws?.readyState === WebSocket.OPEN) {
+        state.ws.send(merged.buffer);
+      }
+    }
+  };
+
+  source.connect(state.processor);
+  state.processor.connect(state.audioCtx.destination);
+
+  state.recording = true;
+  btnMic.classList.add('recording');
+  btnMic.setAttribute('aria-label', 'Остановить запись');
+  micWrap.classList.add('recording');
+  setStatus('Запись…', 'active');
+}
+
+function stopRecording() {
+  if (state.processor) {
+    state.processor.disconnect();
+    state.processor = null;
+  }
+  if (state.mediaStream) {
+    state.mediaStream.getTracks().forEach(t => t.stop());
+    state.mediaStream = null;
+  }
+  if (state.audioCtx) {
+    state.audioCtx.close();
+    state.audioCtx = null;
+  }
+  // Flush remaining buffer on server
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ action: 'flush' }));
+  }
+  state.recording = false;
+  btnMic.classList.remove('recording');
+  btnMic.setAttribute('aria-label', 'Начать запись');
+  micWrap.classList.remove('recording');
+  setVolume(0);
+  if (!state.wasRecording) {
+    setStatus('Готов к записи');
+  }
+}
+
+btnMic.addEventListener('click', () => {
+  if (state.recording) {
+    state.wasRecording = false;
+    stopRecording();
+  } else {
+    state.wasRecording = false;
+    startRecording();
+  }
+});
+
+// ── Save transcript to file ──────────────────────────────────
+btnSave.addEventListener('click', () => {
+  if (state.pendingSave) return;
+  if (state.entries.length === 0) return;
+  state.pendingSave = true;
+  setStatus('Сохранение...', 'processing');
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ action: 'save_transcript' }));
+  }
+});
+
+// ── Clear transcript ─────────────────────────────────────────
+btnClear.addEventListener('click', () => {
+  if (state.entries.length === 0) return;
+  state.entries = [];
+  tScroll.querySelectorAll('.transcript-entry').forEach(el => el.remove());
+  tEmpty.style.display = 'flex';
+  btnSave.disabled = true;
+  btnClear.disabled = true;
+  showInfo('Стенограмма очищена');
+});
+
+// ── Copy transcript ──────────────────────────────────────────
+btnCopy.addEventListener('click', async () => {
+  if (!state.entries.length) return;
+  const text = getTranscriptText();
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btnCopy.innerHTML;
+    btnCopy.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Скопировано`;
+    setTimeout(() => { btnCopy.innerHTML = orig; }, 2000);
+  } catch {
+    showError('Не удалось скопировать');
+  }
+});
+
+// ── LLM Chat ─────────────────────────────────────────────────
+const btnLlmChat      = document.getElementById('btnLlmChat');
+const llmModal        = document.getElementById('llmModal');
+const llmModalClose   = document.getElementById('llmModalClose');
+const llmModalBody    = document.getElementById('llmModalBody');
+const chatMessages    = document.getElementById('chatMessages');
+const chatInput       = document.getElementById('chatInput');
+const chatSendBtn     = document.getElementById('chatSendBtn');
+const btnTogglePrompt = document.getElementById('btnTogglePrompt');
+const chatPromptArea  = document.getElementById('chatPromptArea');
+const chatPromptInput = document.getElementById('chatPromptInput');
+const btnClearChat    = document.getElementById('btnClearChat');
+let llmHistory = [];
+let promptOpen = false;
+
+function addChatMessage(role, content) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  if (role === 'system') {
+    div.innerHTML = `<div class="chat-bubble">${escapeHtml(content)}</div>`;
+  } else {
+    div.innerHTML = `<div class="chat-bubble">${escapeHtml(content)}</div><div class="chat-role">${role === 'user' ? 'Вы' : 'LLM'}</div>`;
+  }
+  chatMessages.appendChild(div);
+  llmModalBody.scrollTop = llmModalBody.scrollHeight;
+}
+
+function showChatLoading() {
+  const div = document.createElement('div');
+  div.className = 'chat-loading';
+  div.id = 'chatLoading';
+  div.textContent = 'Ожидание ответа...';
+  chatMessages.appendChild(div);
+  llmModalBody.scrollTop = llmModalBody.scrollHeight;
+  chatSendBtn.disabled = true;
+  chatInput.disabled = true;
+}
+
+function hideChatLoading() {
+  const el = document.getElementById('chatLoading');
+  if (el) el.remove();
+  chatSendBtn.disabled = false;
+  chatInput.disabled = false;
+}
+
+function buildMessagesWithPrompt() {
+  const prompt = chatPromptInput.value.trim();
+  if (prompt) {
+    // Добавляем system сообщение первым, если ещё не добавлено
+    const hasSystem = llmHistory.length > 0 && llmHistory[0].role === 'system';
+    if (hasSystem) {
+      // Обновляем существующий system промпт
+      llmHistory[0].content = prompt;
+      return llmHistory;
+    } else {
+      return [{ role: 'system', content: prompt }, ...llmHistory];
+    }
+  }
+  return llmHistory;
+}
+
+function sendChatMessage() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+
+  chatInput.value = '';
+  addChatMessage('user', text);
+  llmHistory.push({ role: 'user', content: text });
+  showChatLoading();
+
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    const msgs = buildMessagesWithPrompt();
+    state.ws.send(JSON.stringify({
+      action: 'chat',
+      messages: msgs,
+    }));
+  } else {
+    hideChatLoading();
+    addChatMessage('system', 'Нет подключения к серверу');
+  }
+  chatInput.focus();
+}
+
+// Open LLM chat modal
+btnLlmChat.addEventListener('click', () => {
+  llmModal.classList.add('open');
+  chatInput.focus();
+});
+
+// Close
+llmModalClose.addEventListener('click', () => {
+  llmModal.classList.remove('open');
+});
+llmModal.addEventListener('click', (e) => {
+  if (e.target === llmModal) llmModal.classList.remove('open');
+});
+
+// Send on button click
+chatSendBtn.addEventListener('click', sendChatMessage);
+
+// Send on Enter (Shift+Enter for newline)
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
+
+// Toggle system prompt area
+btnTogglePrompt.addEventListener('click', () => {
+  promptOpen = !promptOpen;
+  chatPromptArea.classList.toggle('open', promptOpen);
+  if (promptOpen) chatPromptInput.focus();
+});
+
+// Clear chat history
+btnClearChat.addEventListener('click', () => {
+  if (llmHistory.length === 0) return;
+  llmHistory = [];
+  chatMessages.querySelectorAll('.chat-msg').forEach(el => el.remove());
+  // Restore system message
+  addChatMessage('system', 'Отправьте сообщение LLM. Ответ придёт от сервера.');
+});
+
+// ── TTS Speech ───────────────────────────────────────────────
+const btnTts        = document.getElementById('btnTts');
+const ttsModal      = document.getElementById('ttsModal');
+const ttsModalClose = document.getElementById('ttsModalClose');
+const ttsText       = document.getElementById('ttsText');
+const ttsVoiceSelect = document.getElementById('ttsVoiceSelect');
+const btnTtsSpeak   = document.getElementById('btnTtsSpeak');
+const btnTtsStop    = document.getElementById('btnTtsStop');
+const ttsStatus     = document.getElementById('ttsStatus');
+
+let ttsVoices = [];
+let ttsSpeaking = false;
+
+function loadTtsVoices() {
+  ttsVoices = speechSynthesis.getVoices();
+  ttsVoiceSelect.innerHTML = '';
+  if (ttsVoices.length === 0) {
+    ttsVoiceSelect.innerHTML = '<option value="">Нет доступных голосов</option>';
+    return;
+  }
+  const sorted = [...ttsVoices].sort((a, b) => {
+    const aRu = a.lang.startsWith('ru') ? 0 : 1;
+    const bRu = b.lang.startsWith('ru') ? 0 : 1;
+    return aRu - bRu || a.name.localeCompare(b.name);
+  });
+  let selectedIdx = 0;
+  sorted.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${v.name} (${v.lang})`;
+    if (v.lang.startsWith('ru') && v.name.toLowerCase().includes('female')) selectedIdx = i;
+    if (v.lang.startsWith('ru') && selectedIdx === -1) selectedIdx = i;
+    ttsVoiceSelect.appendChild(opt);
+  });
+  if (sorted.length > 0) ttsVoiceSelect.value = selectedIdx;
+  ttsStatus.textContent = `Готов (${sorted.length} голосов)`;
+}
+
+function speakText() {
+  const text = ttsText.value.trim();
+  if (!text) { ttsStatus.textContent = 'Введите текст'; return; }
+  if (ttsSpeaking) { speechSynthesis.cancel(); }
+  const idx = parseInt(ttsVoiceSelect.value);
+  const voice = !isNaN(idx) && ttsVoices[idx] ? ttsVoices[idx] : null;
+  const utter = new SpeechSynthesisUtterance(text);
+  if (voice) utter.voice = voice;
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  utter.onstart = () => {
+    ttsSpeaking = true;
+    btnTtsSpeak.disabled = true;
+    btnTtsStop.disabled = false;
+    ttsStatus.textContent = 'Озвучивание...';
+  };
+  utter.onend = () => {
+    ttsSpeaking = false;
+    btnTtsSpeak.disabled = false;
+    btnTtsStop.disabled = true;
+    ttsStatus.textContent = 'Готов';
+  };
+  utter.onerror = (e) => {
+    ttsSpeaking = false;
+    btnTtsSpeak.disabled = false;
+    btnTtsStop.disabled = true;
+    ttsStatus.textContent = 'Ошибка: ' + e.error;
+  };
+  speechSynthesis.speak(utter);
+}
+
+function stopSpeaking() {
+  speechSynthesis.cancel();
+  ttsSpeaking = false;
+  btnTtsSpeak.disabled = false;
+  btnTtsStop.disabled = true;
+  ttsStatus.textContent = 'Остановлено';
+}
+
+btnTts.addEventListener('click', () => {
+  loadTtsVoices();
+  ttsModal.classList.add('open');
+});
+ttsModalClose.addEventListener('click', () => {
+  speechSynthesis.cancel();
+  ttsModal.classList.remove('open');
+});
+ttsModal.addEventListener('click', (e) => {
+  if (e.target === ttsModal) {
+    speechSynthesis.cancel();
+    ttsModal.classList.remove('open');
+  }
+});
+btnTtsSpeak.addEventListener('click', speakText);
+btnTtsStop.addEventListener('click', stopSpeaking);
+
+// Load voices when they become available
+if (speechSynthesis.onvoiceschanged !== undefined) {
+  speechSynthesis.onvoiceschanged = loadTtsVoices;
+}
+// Also try on modal open
+
+// ── Keep connection alive (ping) ─────────────────────────────
+setInterval(() => {
+  if (state.ws?.readyState === WebSocket.OPEN && !state.recording) {
+    // no-op ping, server keepalive handled by websockets library
+  }
+}, 20000);
+</script>
+</body>
+</html>
