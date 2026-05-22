@@ -1,5 +1,5 @@
 """
-Voice Streaming Server (HTTPS/WSS) — с защитой от галлюцинаций Whisper
+Voice Streaming Server (HTTPS/WSS) — распознавание речи через Whisper
 ===================================
 Запустить: python fserver.py
 Зависимости: pip install websockets faster-whisper numpy httpx
@@ -15,11 +15,28 @@ import ssl
 import uuid
 from datetime import datetime
 
+# Windows: добавляем пути к DLL библиотекам nvidia/cuda (cublas64_12.dll и др.)
+if os.name == "nt":
+    _venv_base = os.path.join(os.path.dirname(__file__), ".venv", "Lib", "site-packages")
+    # Пути из run_server.bat
+    _nv_paths = [
+        os.path.join(_venv_base, "nvidia", "cublas", "bin"),
+        os.path.join(_venv_base, "nvidia", "cudnn", "bin"),
+        os.path.join(_venv_base, "nvidia", "cuda_nvrtc", "bin"),
+    ]
+    for _p in _nv_paths:
+        if os.path.isdir(_p):
+            os.add_dll_directory(_p)
+    # Путь к OpenSSL из run_server.bat
+    _openssl_path = r"C:\Program Files\OpenSSL-Win64\bin"
+    if os.path.isdir(_openssl_path):
+        os.add_dll_directory(_openssl_path)
+
 import numpy as np
 import websockets
-from faster_whisper import WhisperModel
 from websockets.datastructures import Headers
 from websockets.http11 import Response
+
 try:
     import httpx
     HAS_HTTPX = True
@@ -39,16 +56,16 @@ PORT = 8765
 MODEL_SIZE = "medium"        # tiny | base | small | medium | large-v3
 DEVICE = "cuda"               # cpu | cuda
 COMPUTE_TYPE = "float16"      # int8 (CPU), float16 (GPU)
-LANGUAGE = None #"ru"               # язык распознавания
+LANGUAGE = None               # язык распознавания (None — автоопределение)
 SAMPLE_RATE = 16000
 CHUNK_BYTES = SAMPLE_RATE * 2 * 1          # 1 секунда, 16-bit PCM, моно
 SILENCE_THRESHOLD = 2000
 SILENCE_CHUNKS = 2
 TRANSCRIPTS_DIR = "transcripts"            # папка для сохранения стенограмм
+# ──────────────────────────────────────────────────────────────
 
 # ── Загрузка конфигурации из .env ────────────────────────────
 def load_env():
-    """Загружает переменные из .env файла в os.environ."""
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
@@ -61,6 +78,7 @@ def load_env():
                     os.environ[key] = val
 
 load_env()
+# ──────────────────────────────────────────────────────────────
 
 # ── Подключение к внешнему LLM (OpenAI-совместимый) ──────────
 LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.openai.com/v1")
@@ -69,10 +87,11 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 # ─────────────────────────────────────────────────────────────
 
 # ── Настройки анти-галлюцинаций ─────────────────────────────
-NO_SPEECH_THRESHOLD = 0.85  # Высокий порог для уверенности в тишине
-# Блоклист из 135 фраз (русские и английские) для фильтрации галлюцинаций
+NO_SPEECH_THRESHOLD = 0.85
 WHISPER_HALLUCINATION_BLACKLIST = [
-    "thank you.", "thank you. thank you.", "thank you very much.", "thanks for watching!", "thanks for watching.", "thank you for watching.", "you", "thanks for watching please subscribe and hit that like button...."
+    "thank you.", "thank you. thank you.", "thank you very much.",
+    "thanks for watching!", "thanks for watching.", "thank you for watching.",
+    "you", "thanks for watching please subscribe and hit that like button...."
 ]
 # ─────────────────────────────────────────────────────────────
 
@@ -88,14 +107,12 @@ def generate_self_signed_cert():
     if os.path.exists(CERT_FILE) and os.path.exists(KEY_FILE):
         log.info("Сертификат уже существует.")
         return True
-
     log.info("Генерация самоподписанного сертификата...")
     try:
         subprocess.run(["openssl", "version"], capture_output=True, check=True)
     except (subprocess.SubprocessError, FileNotFoundError):
         log.error("OpenSSL не найден в системе. Установите openssl или создайте сертификаты вручную.")
         return False
-
     cmd = [
         "openssl", "req", "-x509", "-newkey", "rsa:4096",
         "-keyout", KEY_FILE, "-out", CERT_FILE,
@@ -110,54 +127,67 @@ def generate_self_signed_cert():
         log.error(f"Ошибка генерации сертификата: {e.stderr.decode()}")
         return False
 
-# ---------- Загрузка модели Whisper ----------
-log.info(f"Загружаю модель Whisper '{MODEL_SIZE}'...")
-model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-log.info("Модель загружена.")
+# ====================================================================
+#  Whisper-распознаватель
+# ====================================================================
+class WhisperRecognizer:
+    def __init__(self):
+        from faster_whisper import WhisperModel
+        log.info(f"Загружаю модель Whisper '{MODEL_SIZE}'...")
+        self.model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+        log.info("Whisper-модель загружена.")
+
+    def transcribe(self, pcm_bytes: bytes) -> str:
+        audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        segments, info = self.model.transcribe(
+            audio,
+            language=LANGUAGE,
+            beam_size=5,
+            no_speech_threshold=NO_SPEECH_THRESHOLD,
+            condition_on_previous_text=False,
+        )
+        segment_texts = [seg.text.strip() for seg in segments if seg.text.strip()]
+        raw_text = " ".join(segment_texts)
+        filtered_text = self.filter_hallucinations(raw_text)
+        log.info(f"Язык: {info.language} ({info.language_probability:.0%})  |  '{filtered_text}'")
+        return filtered_text
+
+    @staticmethod
+    def filter_hallucinations(text: str) -> str:
+        if not text:
+            return ""
+        text_lower = text.strip().lower()
+        words = text_lower.split()
+        if text_lower in WHISPER_HALLUCINATION_BLACKLIST:
+            log.info(f"Галлюцинация удалена (полное совпадение): '{text}'")
+            return ""
+        if len(words) <= 3 and all(word in WHISPER_HALLUCINATION_BLACKLIST for word in words):
+            log.info(f"Галлюцинация удалена (слова-паразиты): '{text}'")
+            return ""
+        if WhisperRecognizer._is_hallucination_by_context(text_lower):
+            log.info(f"Галлюцинация удалена (контекст): '{text}'")
+            return ""
+        return text
+
+    @staticmethod
+    def _is_hallucination_by_context(text_lower: str) -> bool:
+        hallucination_phrases = [
+            "спасибо за внимание", "до свидания", "на этом всё", "конец записи"
+        ]
+        if any(phrase in text_lower for phrase in hallucination_phrases):
+            words = text_lower.split()
+            if len(words) <= 5:
+                return True
+        return False
+
+
+# ====================================================================
+#  Инициализация распознавателя
+# ====================================================================
+recognizer = WhisperRecognizer()
 
 def transcribe_audio(pcm_bytes: bytes) -> str:
-    """
-    Транскрибирует аудио с защитой от галлюцинаций.
-    """
-    audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-    segments, info = model.transcribe(
-        audio,
-        language=LANGUAGE,
-        beam_size=5,
-        no_speech_threshold=NO_SPEECH_THRESHOLD,
-        condition_on_previous_text=False,
-    )
-    segment_texts = [seg.text.strip() for seg in segments if seg.text.strip()]
-    raw_text = " ".join(segment_texts)
-    filtered_text = filter_hallucinations(raw_text)
-    log.info(f"Язык: {info.language} ({info.language_probability:.0%})  |  '{filtered_text}'")
-    return filtered_text
-
-def filter_hallucinations(text: str) -> str:
-    if not text:
-        return ""
-    text_lower = text.strip().lower()
-    words = text_lower.split()
-    if text_lower in WHISPER_HALLUCINATION_BLACKLIST:
-        log.info(f"Галлюцинация удалена (полное совпадение): '{text}'")
-        return ""
-    if len(words) <= 3 and all(word in WHISPER_HALLUCINATION_BLACKLIST for word in words):
-        log.info(f"Галлюцинация удалена (слова-паразиты): '{text}'")
-        return ""
-    if is_hallucination_by_context(text_lower):
-        log.info(f"Галлюцинация удалена (контекст): '{text}'")
-        return ""
-    return text
-
-def is_hallucination_by_context(text_lower: str) -> bool:
-    hallucination_phrases = [
-        "спасибо за внимание", "до свидания", "на этом всё", "конец записи"
-    ]
-    if any(phrase in text_lower for phrase in hallucination_phrases):
-        words = text_lower.split()
-        if len(words) <= 5:
-            return True
-    return False
+    return recognizer.transcribe(pcm_bytes)
 
 def rms(pcm_bytes: bytes) -> float:
     audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
@@ -221,16 +251,10 @@ def save_transcript_to_file(text: str, prefix: str = "transcript") -> str | None
 
 # ---------- LLM API (OpenAI-совместимый) ──────────────────────
 def call_llm_sync(messages: list) -> dict:
-    """
-    Синхронный вызов OpenAI-совместимого LLM.
-    Принимает список сообщений в формате OpenAI.
-    Возвращает dict с ответом или ошибкой.
-    """
     if not HAS_HTTPX:
         return {"error": "Библиотека httpx не установлена. Выполните: pip install httpx"}
     if not LLM_API_KEY:
         return {"error": "LLM_API_KEY не настроен в конфигурации сервера"}
-
     url = f"{LLM_API_URL.rstrip('/')}/chat/completions"
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
@@ -241,7 +265,6 @@ def call_llm_sync(messages: list) -> dict:
         "messages": messages,
         "temperature": 0.7,
     }
-
     try:
         with httpx.Client(timeout=60.0) as client:
             resp = client.post(url, headers=headers, json=payload)
@@ -264,7 +287,6 @@ def call_llm_sync(messages: list) -> dict:
 HTML_PATH = os.path.join(os.path.dirname(__file__), "voice-recorder.html")
 
 def make_json_response(data: dict, status: int = 200) -> Response:
-    """Формирует HTTP Response с JSON-телом."""
     body = json.dumps(data, ensure_ascii=False).encode("utf-8")
     headers = Headers([
         ("Content-Type", "application/json; charset=utf-8"),
@@ -275,7 +297,6 @@ def make_json_response(data: dict, status: int = 200) -> Response:
     return Response(status, "OK" if status == 200 else "Error", headers, body)
 
 def make_html_response(body: bytes, status: int = 200) -> Response:
-    """Формирует HTTP Response с HTML-телом."""
     ct = "text/html; charset=utf-8"
     headers = Headers([
         ("Content-Type", ct),
@@ -285,14 +306,11 @@ def make_html_response(body: bytes, status: int = 200) -> Response:
     return Response(status, "OK" if status == 200 else "Error", headers, body)
 
 def process_request(connection, request):
-    # WebSocket — пропускаем
     if request.headers.get("Upgrade", "").lower() == "websocket":
         return None
-
     path = request.path.rstrip("/")
     log.info(f"HTTP {path} от {request.headers.get('Host', '?')}")
 
-    # ── API: POST /api/chat ───────────────────────────────────
     if path == "/api/chat":
         try:
             body = request.body or b""
@@ -311,11 +329,9 @@ def process_request(connection, request):
             log.error(f"Ошибка обработки /api/chat: {e}")
             return make_json_response({"error": str(e)}, 500)
 
-    # ── API: GET /api/health ─────────────────────────────────
     if path == "/api/health":
         return make_json_response({"status": "ok", "llm_configured": bool(LLM_API_KEY)})
 
-    # ── HTML: отдаём веб-приложение ──────────────────────────
     try:
         with open(HTML_PATH, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -326,7 +342,6 @@ def process_request(connection, request):
     except Exception as e:
         log.error(f"Ошибка чтения HTML: {e}")
         body = "<h1>Voice Stream</h1><p>500 HTML reading error</p>".encode("utf-8")
-
     return make_html_response(body)
 
 # ---------- Обработчик WebSocket ----------
@@ -361,11 +376,12 @@ class ClientSession:
             log.error(f"Ошибка записи стенограммы: {e}")
 
 async def handle_client(ws):
+    """Обработка WebSocket-клиента с Whisper."""
     addr = ws.remote_address
     session = ClientSession()
-    log.info(f"Клиент подключился: {addr} (сессия {session.session_id})")
 
     await ws.send(json.dumps({"type": "session", "session_id": session.session_id}))
+    await ws.send(json.dumps({"type": "engine", "engine": "whisper"}))
 
     try:
         async for message in ws:
@@ -373,19 +389,16 @@ async def handle_client(ws):
                 session.buffer.extend(message)
                 level = rms(message)
                 is_silent = level < SILENCE_THRESHOLD
-
                 if is_silent:
                     session.silence_count += 1
                 else:
                     session.silence_count = 0
-
                 await ws.send(json.dumps({"type": "level", "rms": round(level)}))
 
                 if len(session.buffer) >= CHUNK_BYTES * 3 and session.silence_count >= SILENCE_CHUNKS:
                     audio_snapshot = bytes(session.buffer)
                     session.buffer.clear()
                     session.silence_count = 0
-
                     await ws.send(json.dumps({"type": "status", "text": "Распознаю..."}))
                     try:
                         text = await asyncio.get_event_loop().run_in_executor(
@@ -437,58 +450,36 @@ async def handle_client(ws):
                         fname = save_transcript_to_file(session.current_text)
                         if fname:
                             await ws.send(json.dumps({
-                                "type": "file_saved",
-                                "filename": fname,
-                                "text": "Стенограмма сохранена"
+                                "type": "file_saved", "filename": fname, "text": "Стенограмма сохранена"
                             }))
                         else:
-                            await ws.send(json.dumps({
-                                "type": "error",
-                                "text": "Нет текста для сохранения"
-                            }))
+                            await ws.send(json.dumps({"type": "error", "text": "Нет текста для сохранения"}))
 
                     elif action == "list_transcripts":
                         files = list_transcript_files()
-                        await ws.send(json.dumps({
-                            "type": "transcript_list",
-                            "files": files
-                        }))
+                        await ws.send(json.dumps({"type": "transcript_list", "files": files}))
 
                     elif action == "get_transcript":
                         filename = cmd.get("filename", "")
                         content = read_transcript_file(filename)
                         if content is not None:
                             await ws.send(json.dumps({
-                                "type": "transcript_content",
-                                "filename": filename,
-                                "content": content
+                                "type": "transcript_content", "filename": filename, "content": content
                             }))
                         else:
-                            await ws.send(json.dumps({
-                                "type": "error",
-                                "text": f"Файл '{filename}' не найден"
-                            }))
+                            await ws.send(json.dumps({"type": "error", "text": f"Файл '{filename}' не найден"}))
 
                     elif action == "delete_transcript":
                         filename = cmd.get("filename", "")
                         if delete_transcript_file(filename):
-                            await ws.send(json.dumps({
-                                "type": "file_deleted",
-                                "filename": filename
-                            }))
+                            await ws.send(json.dumps({"type": "file_deleted", "filename": filename}))
                         else:
-                            await ws.send(json.dumps({
-                                "type": "error",
-                                "text": f"Не удалось удалить '{filename}'"
-                            }))
+                            await ws.send(json.dumps({"type": "error", "text": f"Не удалось удалить '{filename}'"}))
 
                     elif action == "reconnect":
                         session.reconnected = True
                         log.info(f"Клиент {addr} переподключился (сессия {session.session_id})")
-                        await ws.send(json.dumps({
-                            "type": "reconnect_ack",
-                            "session_id": session.session_id
-                        }))
+                        await ws.send(json.dumps({"type": "reconnect_ack", "session_id": session.session_id}))
 
                     elif action == "chat":
                         messages = cmd.get("messages", [])
@@ -504,8 +495,7 @@ async def handle_client(ws):
                                     await ws.send(json.dumps({"type": "chat_response", "error": result["error"]}))
                                 else:
                                     await ws.send(json.dumps({
-                                        "type": "chat_response",
-                                        "response": result["response"]
+                                        "type": "chat_response", "response": result["response"]
                                     }))
                             except Exception as e:
                                 log.error(f"LLM ошибка: {e}")
@@ -515,9 +505,10 @@ async def handle_client(ws):
                     pass
 
     except websockets.exceptions.ConnectionClosed as e:
-        log.info(f"Клиент отключился: {addr} (код {e.code}) (сессия {session.session_id})")
+        log.info(f"[Whisper] Клиент отключился: {addr} (код {e.code}) (сессия {session.session_id})")
     except Exception as e:
-        log.error(f"Ошибка соединения {addr}: {e}", exc_info=True)
+        log.error(f"[Whisper] Ошибка соединения {addr}: {e}", exc_info=True)
+
 
 # ---------- Запуск сервера с SSL ----------
 def get_local_ip() -> str:
@@ -532,21 +523,17 @@ async def main():
     if not generate_self_signed_cert():
         log.error("Не удалось получить сертификат. Завершение работы.")
         return
-
     local_ip = get_local_ip()
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ssl_context.load_cert_chain(CERT_FILE, KEY_FILE)
-
     async with websockets.serve(
-        handle_client,
-        HOST,
-        PORT,
-        process_request=process_request,
-        ssl=ssl_context
+        handle_client, HOST, PORT,
+        process_request=process_request, ssl=ssl_context
     ):
         log.info(f"WebSocket-сервер (WSS) запущен на wss://{local_ip}:{PORT}")
         log.info(f"HTML-интерфейс доступен по адресу https://{local_ip}:{PORT}")
         log.info(f"Стенограммы сохраняются в папку '{TRANSCRIPTS_DIR}/'")
+        log.info(f"Движок распознавания: Whisper")
         if LLM_API_KEY:
             log.info(f"LLM API настроен: {LLM_API_URL}, модель={LLM_MODEL}")
         else:
