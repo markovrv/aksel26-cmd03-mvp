@@ -5,5 +5,5 @@ __pycache__
 .env
 config.py
 transcripts
-silero_v4_ru.pt
+*.pt
 prompts
