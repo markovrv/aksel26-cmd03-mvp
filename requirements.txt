@@ -3,6 +3,9 @@ faster-whisper
 numpy
 setuptools
 httpx
+torch
+torchaudio
+omegaconf
 
 # CUDA-зависимости для faster-whisper (на Windows без них модель не загружается)
 nvidia-cublas-cu12

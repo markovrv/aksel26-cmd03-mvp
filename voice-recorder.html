@@ -799,17 +799,57 @@ input  { font: inherit; color: inherit; }
       </button>
     </div>
     <div class="modal-body" style="display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); min-height:auto;">
-      <div style="display:flex; gap:var(--space-2); align-items:center;">
-        <label for="ttsVoiceSelect" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
-        <select id="ttsVoiceSelect" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-2); font-size:var(--text-sm); color:var(--text);">
-          <option value="">Загрузка голосов...</option>
-        </select>
+      <!-- TTS Mode Toggle -->
+      <div style="display:flex; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden;">
+        <button class="tts-mode-btn active" data-mode="local" style="flex:1; padding:var(--space-2); font-size:var(--text-xs); font-weight:600; transition:background var(--transition), color var(--transition); border:none; background:transparent; color:var(--text-muted); cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle; margin-right:4px;">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          Браузер
+        </button>
+        <button class="tts-mode-btn" data-mode="server" style="flex:1; padding:var(--space-2); font-size:var(--text-xs); font-weight:600; transition:background var(--transition), color var(--transition); border:none; background:transparent; color:var(--text-muted); cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle; margin-right:4px;">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+          Сервер
+        </button>
       </div>
-      <div style="display:flex; gap:var(--space-2); align-items:center;">
-        <label for="ttsRate" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Скорость:</label>
-        <input type="range" id="ttsRate" min="0.25" max="2.0" step="0.1" value="1.0" style="flex:1;" oninput="ttsRateLabel.innerHTML = ttsRate.value">
-        <span id="ttsRateLabel" style="font-size:var(--text-xs); color:var(--text-muted); min-width:2.5em; text-align:right;">1.0</span>
+
+      <!-- Local TTS Controls (browser speechSynthesis) -->
+      <div id="ttsLocalControls">
+        <div style="display:flex; gap:var(--space-2); align-items:center;">
+          <label for="ttsVoiceSelect" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
+          <select id="ttsVoiceSelect" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-2); font-size:var(--text-sm); color:var(--text);">
+            <option value="">Загрузка голосов...</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2);">
+          <label for="ttsRate" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Скорость:</label>
+          <input type="range" id="ttsRate" min="0.25" max="2.0" step="0.1" value="1.0" style="flex:1;" oninput="ttsRateLabel.innerHTML = ttsRate.value">
+          <span id="ttsRateLabel" style="font-size:var(--text-xs); color:var(--text-muted); min-width:2.5em; text-align:right;">1.0</span>
+        </div>
       </div>
+
+      <!-- Server TTS Controls -->
+      <div id="ttsServerControls" style="display:none;">
+        <div style="display:flex; gap:var(--space-2); align-items:center;">
+          <label for="ttsServerVoice" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
+          <select id="ttsServerVoice" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-2); font-size:var(--text-sm); color:var(--text);">
+            <option value="xenia">xenia (женский, спокойный)</option>
+            <option value="aidar">aidar (мужской, уверенный)</option>
+            <option value="baya">baya (женский, эмоциональный)</option>
+            <option value="kseniya">kseniya (женский, деловой)</option>
+            <option value="eugeny">eugeny (мужской, высокое качество)</option>
+          </select>
+        </div>
+        <div style="font-size:var(--text-xs); color:var(--text-faint); margin-top:var(--space-1);">
+          Для серверного синтеза необходимо подключение к серверу.
+        </div>
+      </div>
+
       <textarea id="ttsText" class="chat-prompt-textarea" style="min-height:120px; max-height:300px;" placeholder="Введите текст для озвучивания..." aria-label="Текст для озвучивания"></textarea>
       <div style="display:flex; gap:var(--space-2);">
         <button class="btn-action" id="btnTtsSpeak" style="flex:1; background:var(--primary); color:#fff; border-color:var(--primary);">
@@ -1496,21 +1536,48 @@ btnClearChat.addEventListener('click', () => {
   addChatMessage('system', 'Отправьте сообщение LLM. Ответ придёт от сервера.');
 });
 
-// ── TTS Speech ───────────────────────────────────────────────
-const btnTts        = document.getElementById('btnTts');
-const ttsModal      = document.getElementById('ttsModal');
-const ttsModalClose = document.getElementById('ttsModalClose');
-const ttsText       = document.getElementById('ttsText');
-const ttsVoiceSelect = document.getElementById('ttsVoiceSelect');
-const btnTtsSpeak   = document.getElementById('btnTtsSpeak');
-const btnTtsStop    = document.getElementById('btnTtsStop');
-const ttsStatus     = document.getElementById('ttsStatus');
-const ttsRate       = document.getElementById('ttsRate');
-const ttsRateLabel  = document.getElementById('ttsRateLabel');
+// ── TTS Speech (Local + Server) ──────────────────────────────
+const btnTts          = document.getElementById('btnTts');
+const ttsModal        = document.getElementById('ttsModal');
+const ttsModalClose   = document.getElementById('ttsModalClose');
+const ttsText         = document.getElementById('ttsText');
+const ttsVoiceSelect  = document.getElementById('ttsVoiceSelect');
+const ttsServerVoice  = document.getElementById('ttsServerVoice');
+const btnTtsSpeak     = document.getElementById('btnTtsSpeak');
+const btnTtsStop      = document.getElementById('btnTtsStop');
+const ttsStatus       = document.getElementById('ttsStatus');
+const ttsRate         = document.getElementById('ttsRate');
+const ttsRateLabel    = document.getElementById('ttsRateLabel');
+const ttsLocalCtrl    = document.getElementById('ttsLocalControls');
+const ttsServerCtrl   = document.getElementById('ttsServerControls');
+const ttsModeBtns     = document.querySelectorAll('.tts-mode-btn');
 
-let ttsVoices = [];
-let ttsSpeaking = false;
+let ttsVoices    = [];
+let ttsSpeaking  = false;
+let ttsMode      = 'local'; // 'local' | 'server'
 
+// Server TTS: AudioContext for playback
+let ttsAudioCtx  = null;
+let ttsBufferQueue = [];
+let ttsPlaySource = null;
+let ttsIsPlaying  = false;
+
+// ── TTS Mode toggle ──────────────────────────────────────────
+ttsModeBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    ttsModeBtns.forEach(b => { b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; });
+    btn.style.background = 'var(--primary)';
+    btn.style.color = '#fff';
+    ttsMode = btn.dataset.mode;
+    ttsLocalCtrl.style.display = ttsMode === 'local' ? 'block' : 'none';
+    ttsServerCtrl.style.display = ttsMode === 'server' ? 'block' : 'none';
+    ttsStatus.textContent = 'Готов';
+    // Stop any ongoing speech
+    if (ttsSpeaking) stopSpeaking();
+  });
+});
+
+// ── Local TTS (browser speechSynthesis) ──────────────────────
 function loadTtsVoices() {
   ttsVoices = speechSynthesis.getVoices();
   ttsVoiceSelect.innerHTML = '';
@@ -1523,20 +1590,20 @@ function loadTtsVoices() {
     const bRu = b.lang.startsWith('ru') ? 0 : 1;
     return aRu - bRu || a.name.localeCompare(b.name);
   });
-  let selectedIdx = 0;
+  let selectedIdx = -1;
   sorted.forEach((v, i) => {
     const opt = document.createElement('option');
     opt.value = i;
     opt.textContent = `${v.name} (${v.lang})`;
-    if (v.lang.startsWith('ru') && v.name.toLowerCase().includes('female')) selectedIdx = i;
-    if (v.lang.startsWith('ru') && selectedIdx === -1) selectedIdx = i;
+    if (v.lang.startsWith('ru') && v.name.toLowerCase().includes('female') && selectedIdx < 0) selectedIdx = i;
+    if (v.lang.startsWith('ru') && selectedIdx < 0) selectedIdx = i;
     ttsVoiceSelect.appendChild(opt);
   });
-  if (sorted.length > 0) ttsVoiceSelect.value = selectedIdx;
+  if (selectedIdx >= 0) ttsVoiceSelect.value = selectedIdx;
   ttsStatus.textContent = `Готов (${sorted.length} голосов)`;
 }
 
-function speakText() {
+function speakLocal() {
   const text = ttsText.value.trim();
   if (!text) { ttsStatus.textContent = 'Введите текст'; return; }
   if (ttsSpeaking) { speechSynthesis.cancel(); }
@@ -1544,64 +1611,182 @@ function speakText() {
   const voice = !isNaN(idx) && ttsVoices[idx] ? ttsVoices[idx] : null;
   const utter = new SpeechSynthesisUtterance(text);
   if (voice) utter.voice = voice;
-  utter.rate = ttsRate.value;
-  utter.pitch = 1.0;
+  utter.rate = parseFloat(ttsRate.value);
   utter.onstart = () => {
-    ttsSpeaking = true;
-    btnTtsSpeak.disabled = true;
-    btnTtsStop.disabled = false;
+    ttsSpeaking = true; btnTtsSpeak.disabled = true; btnTtsStop.disabled = false;
     ttsStatus.textContent = 'Озвучивание...';
   };
   utter.onend = () => {
-    ttsSpeaking = false;
-    btnTtsSpeak.disabled = false;
-    btnTtsStop.disabled = true;
+    ttsSpeaking = false; btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
     ttsStatus.textContent = 'Готов';
   };
   utter.onerror = (e) => {
-    ttsSpeaking = false;
-    btnTtsSpeak.disabled = false;
-    btnTtsStop.disabled = true;
+    ttsSpeaking = false; btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
     ttsStatus.textContent = 'Ошибка: ' + e.error;
   };
   speechSynthesis.speak(utter);
 }
 
-function stopSpeaking() {
+function stopLocal() {
   speechSynthesis.cancel();
+  ttsSpeaking = false;
+  btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
+  ttsStatus.textContent = 'Остановлено';
+}
+
+// ── Server TTS (WebSocket → Silero) ──────────────────────────
+function speakServer() {
+  const text = ttsText.value.trim();
+  if (!text) { ttsStatus.textContent = 'Введите текст'; return; }
+  if (ttsSpeaking) { stopServerPlayback(); }
+
+  if (state.ws?.readyState !== WebSocket.OPEN) {
+    ttsStatus.textContent = 'Нет подключения к серверу';
+    return;
+  }
+
+  ttsSpeaking = true;
+  btnTtsSpeak.disabled = true;
+  btnTtsStop.disabled = false;
+  ttsStatus.textContent = 'Запрос синтеза...';
+
+  const speaker = ttsServerVoice.value;
+  state.ws.send(JSON.stringify({
+    action: 'tts',
+    text: text,
+    speaker: speaker,
+  }));
+}
+
+function stopServerPlayback() {
+  if (ttsPlaySource) {
+    try { ttsPlaySource.stop(); } catch {}
+    ttsPlaySource = null;
+  }
+  if (ttsAudioCtx) {
+    try { ttsAudioCtx.close(); } catch {}
+    ttsAudioCtx = null;
+  }
+  ttsBufferQueue = [];
+  ttsIsPlaying = false;
   ttsSpeaking = false;
   btnTtsSpeak.disabled = false;
   btnTtsStop.disabled = true;
   ttsStatus.textContent = 'Остановлено';
 }
 
+function playServerAudio(pcmData, sampleRate) {
+  if (!ttsAudioCtx) {
+    ttsAudioCtx = new AudioContext({ sampleRate: sampleRate });
+  }
+  // Convert PCM16 (Int16) to Float32
+  const i16 = new Int16Array(pcmData);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) {
+    f32[i] = i16[i] / 32768.0;
+  }
+  const audioBuf = ttsAudioCtx.createBuffer(1, f32.length, sampleRate);
+  audioBuf.getChannelData(0).set(f32);
+
+  ttsBufferQueue.push(audioBuf);
+  playNextInQueue();
+}
+
+function playNextInQueue() {
+  if (ttsIsPlaying || ttsBufferQueue.length === 0) return;
+  ttsIsPlaying = true;
+  const audioBuf = ttsBufferQueue.shift();
+  ttsPlaySource = ttsAudioCtx.createBufferSource();
+  ttsPlaySource.buffer = audioBuf;
+  ttsPlaySource.connect(ttsAudioCtx.destination);
+  ttsPlaySource.onended = () => {
+    ttsIsPlaying = false;
+    ttsPlaySource = null;
+    if (ttsBufferQueue.length > 0) {
+      playNextInQueue();
+    } else {
+      ttsSpeaking = false;
+      btnTtsSpeak.disabled = false;
+      btnTtsStop.disabled = true;
+      ttsStatus.textContent = 'Готов';
+    }
+  };
+  ttsPlaySource.start();
+}
+
+function stopSpeaking() {
+  if (ttsMode === 'local') {
+    stopLocal();
+  } else {
+    stopServerPlayback();
+  }
+}
+
+function speakText() {
+  if (ttsMode === 'local') {
+    speakLocal();
+  } else {
+    speakServer();
+  }
+}
+
+// ── Button events ────────────────────────────────────────────
 btnTts.addEventListener('click', () => {
   loadTtsVoices();
   ttsModal.classList.add('open');
 });
 ttsModalClose.addEventListener('click', () => {
-  speechSynthesis.cancel();
+  stopSpeaking();
   ttsModal.classList.remove('open');
 });
 ttsModal.addEventListener('click', (e) => {
   if (e.target === ttsModal) {
-    speechSynthesis.cancel();
+    stopSpeaking();
     ttsModal.classList.remove('open');
   }
 });
 btnTtsSpeak.addEventListener('click', speakText);
 btnTtsStop.addEventListener('click', stopSpeaking);
 
-// Load voices when they become available
+// Load local voices
 if (speechSynthesis.onvoiceschanged !== undefined) {
   speechSynthesis.onvoiceschanged = loadTtsVoices;
 }
-// Also try on modal open
 
-// ── Keep connection alive (ping) ─────────────────────────────
+// ── WebSocket message handling for TTS ───────────────────────
+// Добавляем обработку TTS-сообщений и бинарного аудио
+(function patchWsMessage() {
+  const checkInterval = setInterval(() => {
+    if (state.ws) {
+      clearInterval(checkInterval);
+      state.ws.addEventListener('message', (e) => {
+        if (e.data instanceof ArrayBuffer) {
+          if (state._ttsMeta) {
+            const sr = state._ttsMeta.sample_rate || 24000;
+            playServerAudio(e.data, sr);
+          }
+        } else {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'tts_start') {
+              state._ttsMeta = msg;
+              ttsStatus.textContent = 'Получение аудио...';
+            } else if (msg.type === 'tts_end') {
+              state._ttsMeta = null;
+            } else if (msg.type === 'tts_status') {
+              ttsStatus.textContent = msg.text;
+            }
+          } catch {}
+        }
+      });
+    }
+  }, 100);
+})();
+
+// ── Keep connection alive ────────────────────────────────────
 setInterval(() => {
   if (state.ws?.readyState === WebSocket.OPEN && !state.recording) {
-    // no-op ping, server keepalive handled by websockets library
+    // no-op ping
   }
 }, 20000);
 </script>
