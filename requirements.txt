@@ -6,6 +6,7 @@ httpx
 torch
 torchaudio
 omegaconf
+silero
 
 # CUDA-зависимости для faster-whisper (на Windows без них модель не загружается)
 nvidia-cublas-cu12

@@ -5,4 +5,5 @@ __pycache__
 .env
 config.py
 transcripts
-vosk-model-*
+silero_v4_ru.pt
+prompts

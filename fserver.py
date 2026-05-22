@@ -13,6 +13,7 @@ import socket
 import subprocess
 import ssl
 import uuid
+import re
 from datetime import datetime
 
 import numpy as np
@@ -65,6 +66,7 @@ CHUNK_BYTES = SAMPLE_RATE * 2 * 1          # 1 секунда, 16-bit PCM, мо�
 SILENCE_THRESHOLD = 2000
 SILENCE_CHUNKS = 2
 TRANSCRIPTS_DIR = "transcripts"            # папка для сохранения стенограмм
+PROMPTS_DIR = "prompts"                    # папка для системных промптов
 
 # TTS конфигурация
 TTS_MODEL_ID = "v4_ru"       # v4_ru | v3_1_ru | v5_ru | ...
@@ -103,6 +105,82 @@ WHISPER_HALLUCINATION_BLACKLIST = [
 # ─────────────────────────────────────────────────────────────
 
 os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
+os.makedirs(PROMPTS_DIR, exist_ok=True)
+
+# ---------- Валидация имени промпта ----------
+VALID_PROMPT_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+def is_valid_prompt_name(name: str) -> bool:
+    """Проверяет, что имя промпта безопасно для использования в качестве имени файла."""
+    return bool(VALID_PROMPT_NAME_RE.match(name))
+
+def get_prompt_path(name: str) -> str | None:
+    """Возвращает абсолютный путь к файлу промпта или None, если имя невалидно."""
+    if not is_valid_prompt_name(name):
+        return None
+    base = os.path.realpath(PROMPTS_DIR)
+    fname = f"{name}.txt"
+    full = os.path.realpath(os.path.join(base, fname))
+    if not full.startswith(base):
+        return None
+    return full
+
+# ---------- Функции работы с промптами ----------
+def list_prompts() -> list[dict]:
+    """Возвращает список промптов с метаинформацией."""
+    prompts = []
+    if not os.path.isdir(PROMPTS_DIR):
+        return prompts
+    for fname in sorted(os.listdir(PROMPTS_DIR)):
+        if fname.endswith(".txt"):
+            name = fname[:-4]
+            fpath = os.path.join(PROMPTS_DIR, fname)
+            if os.path.isfile(fpath):
+                stat = os.stat(fpath)
+                prompts.append({
+                    "name": name,
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+    return prompts
+
+def get_prompt(name: str) -> str | None:
+    """Возвращает содержимое промпта или None, если не найден/невалиден."""
+    path = get_prompt_path(name)
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return None
+
+def save_prompt(name: str, content: str) -> bool:
+    """Сохраняет промпт. Возвращает True при успехе."""
+    path = get_prompt_path(name)
+    if not path:
+        return False
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        log.info(f"Промпт сохранён: {name}")
+        return True
+    except Exception as e:
+        log.error(f"Ошибка сохранения промпта {name}: {e}")
+        return False
+
+def delete_prompt(name: str) -> bool:
+    """Удаляет промпт. Возвращает True при успехе."""
+    path = get_prompt_path(name)
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        os.remove(path)
+        log.info(f"Промпт удалён: {name}")
+        return True
+    except Exception as e:
+        log.error(f"Ошибка удаления промпта {name}: {e}")
+        return False
 
 # ---------- Сертификат ----------
 CERT_FILE = "cert.pem"
@@ -327,11 +405,20 @@ HTML_PATH = os.path.join(os.path.dirname(__file__), "voice-recorder.html")
 
 def make_json_response(data: dict, status: int = 200) -> Response:
     body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    headers = Headers([("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body))), ("Cache-Control", "no-cache"), ("Access-Control-Allow-Origin", "*")])
+    headers = Headers([
+        ("Content-Type", "application/json; charset=utf-8"),
+        ("Content-Length", str(len(body))),
+        ("Cache-Control", "no-cache"),
+        ("Access-Control-Allow-Origin", "*")
+    ])
     return Response(status, "OK" if status == 200 else "Error", headers, body)
 
 def make_html_response(body: bytes, status: int = 200) -> Response:
-    headers = Headers([("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(body))), ("Cache-Control", "no-cache")])
+    headers = Headers([
+        ("Content-Type", "text/html; charset=utf-8"),
+        ("Content-Length", str(len(body))),
+        ("Cache-Control", "no-cache")
+    ])
     return Response(status, "OK" if status == 200 else "Error", headers, body)
 
 def process_request(connection, request):
@@ -339,6 +426,49 @@ def process_request(connection, request):
         return None
     path = request.path.rstrip("/")
     log.info(f"HTTP {path}")
+
+    # ---- API промптов ----
+    if path == "/api/prompts":
+        # GET список промптов
+        if request.method == "GET":
+            prompts = list_prompts()
+            return make_json_response({"prompts": prompts})
+        return make_json_response({"error": "Method not allowed"}, 405)
+
+    if path.startswith("/api/prompts/"):
+        name_part = path[len("/api/prompts/"):]
+        # Извлекаем имя (может содержать только разрешённые символы)
+        if '/' in name_part or not name_part:
+            return make_json_response({"error": "Invalid prompt name"}, 400)
+        name = name_part
+        if request.method == "GET":
+            content = get_prompt(name)
+            if content is None:
+                return make_json_response({"error": "Prompt not found"}, 404)
+            return make_json_response({"name": name, "content": content})
+        elif request.method == "POST":
+            try:
+                body = json.loads(request.body or b"{}")
+                content = body.get("content", "")
+                if not isinstance(content, str):
+                    return make_json_response({"error": "Content must be string"}, 400)
+                ok = save_prompt(name, content)
+                if ok:
+                    return make_json_response({"status": "ok", "name": name})
+                else:
+                    return make_json_response({"error": "Invalid prompt name or save failed"}, 400)
+            except json.JSONDecodeError:
+                return make_json_response({"error": "Invalid JSON"}, 400)
+        elif request.method == "DELETE":
+            ok = delete_prompt(name)
+            if ok:
+                return make_json_response({"status": "ok", "name": name})
+            else:
+                return make_json_response({"error": "Prompt not found or invalid name"}, 404)
+        else:
+            return make_json_response({"error": "Method not allowed"}, 405)
+
+    # ---- Остальные API ----
     if path == "/api/chat":
         try:
             data = json.loads(request.body or b"")
@@ -352,8 +482,11 @@ def process_request(connection, request):
         except Exception as e:
             log.error(f"Ошибка /api/chat: {e}")
             return make_json_response({"error": str(e)}, 500)
+
     if path == "/api/health":
         return make_json_response({"status": "ok", "llm_configured": bool(LLM_API_KEY)})
+
+    # ---- Отдача HTML ----
     try:
         with open(HTML_PATH, "r", encoding="utf-8") as f:
             html_content = f.read().replace("ws://", "wss://")
@@ -493,6 +626,47 @@ async def handle_client(ws):
                             except Exception as e:
                                 await ws.send(json.dumps({"type": "chat_response", "error": str(e)}))
 
+                    # ----- Команды для работы с промптами (WebSocket) -----
+                    elif action == "list_prompts":
+                        prompts = list_prompts()
+                        await ws.send(json.dumps({"type": "prompt_list", "prompts": prompts}))
+
+                    elif action == "get_prompt":
+                        name = cmd.get("name", "")
+                        if not name:
+                            await ws.send(json.dumps({"type": "error", "text": "Не указано имя промпта"}))
+                        else:
+                            content = get_prompt(name)
+                            if content is None:
+                                await ws.send(json.dumps({"type": "error", "text": f"Промпт '{name}' не найден"}))
+                            else:
+                                await ws.send(json.dumps({"type": "prompt_content", "name": name, "content": content}))
+
+                    elif action == "save_prompt":
+                        name = cmd.get("name", "")
+                        content = cmd.get("content", "")
+                        if not name:
+                            await ws.send(json.dumps({"type": "error", "text": "Не указано имя промпта"}))
+                        elif not isinstance(content, str):
+                            await ws.send(json.dumps({"type": "error", "text": "Поле content должно быть строкой"}))
+                        else:
+                            ok = save_prompt(name, content)
+                            if ok:
+                                await ws.send(json.dumps({"type": "prompt_saved", "name": name}))
+                            else:
+                                await ws.send(json.dumps({"type": "error", "text": "Недопустимое имя промпта или ошибка записи"}))
+
+                    elif action == "delete_prompt":
+                        name = cmd.get("name", "")
+                        if not name:
+                            await ws.send(json.dumps({"type": "error", "text": "Не указано имя промпта"}))
+                        else:
+                            ok = delete_prompt(name)
+                            if ok:
+                                await ws.send(json.dumps({"type": "prompt_deleted", "name": name}))
+                            else:
+                                await ws.send(json.dumps({"type": "error", "text": f"Промпт '{name}' не найден или не удалён"}))
+
                     elif action == "tts":
                         text = cmd.get("text", "")
                         speaker = cmd.get("speaker", tts._speaker)
@@ -547,6 +721,7 @@ async def main():
         log.info(f"WebSocket-сервер (WSS) запущен на wss://{local_ip}:{PORT}")
         log.info(f"HTML-интерфейс: https://{local_ip}:{PORT}")
         log.info(f"Стенограммы: '{TRANSCRIPTS_DIR}/'")
+        log.info(f"Системные промпты: '{PROMPTS_DIR}/'")
         log.info(f"Движок: Whisper ({MODEL_SIZE}), TTS: Silero (голос: {TTS_SPEAKER})")
         if LLM_API_KEY:
             log.info(f"LLM API: {LLM_API_URL}, модель={LLM_MODEL}")

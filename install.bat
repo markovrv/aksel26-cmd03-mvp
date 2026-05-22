@@ -193,6 +193,12 @@ if %errorlevel% equ 0 (
 )
 
 echo [..] Устанавливаю зависимости из requirements.txt...
+echo [..] Будут установлены:
+echo    - fast-whisper (распознавание речи)
+echo    - torch + silero (синтез речи TTS)
+echo    - websockets, httpx (сервер)
+echo    - CUDA-библиотеки nvidia (ускорение GPU)
+echo.
 .venv\Scripts\pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo [ERROR] Не удалось установить зависимости
@@ -239,7 +245,13 @@ echo.
 echo Или вручную:
 echo   .venv\Scripts\python fserver.py
 echo.
-echo Веб-интерфейс будет доступен по адресу:
+echo ╔══ Сервисы ═══════════════════════════════════════╗
+echo ║  Распознавание речи: Whisper (faster-whisper)    ║
+echo ║  Синтез речи (TTS):   Silero (локально)          ║
+echo ║  LLM чат:             через WebSocket             ║
+echo ╚═══════════════════════════════════════════════════╝
+echo.
+echo Веб-интерфейс доступен по адресу:
 echo   https://localhost:8765
 echo.
 
