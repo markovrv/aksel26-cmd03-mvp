@@ -60,11 +60,16 @@ PORT = 8765
 MODEL_SIZE = "medium"        # tiny | base | small | medium | large-v3
 DEVICE = "cuda"               # cpu | cuda
 COMPUTE_TYPE = "float16"      # int8 (CPU), float16 (GPU)
-LANGUAGE = None               # язык распознавания (None — автоопределение)
+LANGUAGE = "ru"               # язык распознавания (None — автоопределение)
 SAMPLE_RATE = 16000
 CHUNK_BYTES = SAMPLE_RATE * 2 * 1          # 1 секунда, 16-bit PCM, моно
 SILENCE_THRESHOLD = 2000
 SILENCE_CHUNKS = 2
+
+# VAD настройки (голосовая активность)
+VAD_SILENCE_TRIGGER = 8          # количество тихих блоков для окончания фразы (при ~250 мс/блок = 2 сек)
+VAD_MAX_SPEECH_BLOCKS = 40       # максимальное количество блоков речи без паузы (40*250мс=10 сек)
+BLOCK_TIME_MS = 250              # ожидаемый интервал между аудиоблоками от клиента
 TRANSCRIPTS_DIR = "transcripts"            # папка для сохранения стенограмм
 PROMPTS_DIR = "prompts"                    # папка для системных промптов
 
@@ -97,10 +102,22 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
 # ── Настройки анти-галлюцинаций ─────────────────────────────
 NO_SPEECH_THRESHOLD = 0.85
-WHISPER_HALLUCINATION_BLACKLIST = [
-    "thank you.", "thank you. thank you.", "thank you very much.",
-    "thanks for watching!", "thanks for watching.", "thank you for watching.",
-    "you", "thanks for watching please subscribe and hit that like button...."
+WHISPER_HALLUCINATION_BLACKLIST = [ 
+    "редактор субтитров", 
+    "подписывайтесь на наш канал",
+    "thank you", 
+    "fuck you", 
+    "thanks for watching", 
+    "спасибо за просмотр",
+    "тихо, тихо",
+    "тихо-тихо",
+    "фактфронт",
+    "фондю любит тебя",
+    "подписывайтесь",
+    "с вами был игорь негода",
+    "продолжение следует",
+    "динамичная музыка",
+    "спокойная музыка",
 ]
 # ─────────────────────────────────────────────────────────────
 
@@ -238,15 +255,28 @@ class WhisperRecognizer:
             return ""
         text_lower = text.strip().lower()
         words = text_lower.split()
+        
+        # 1. Полное совпадение
         if text_lower in WHISPER_HALLUCINATION_BLACKLIST:
             log.info(f"Галлюцинация удалена (полное совпадение): '{text}'")
             return ""
+        
+        # 2. Поиск подстроки (новая проверка)
+        for bad in WHISPER_HALLUCINATION_BLACKLIST:
+            if bad in text_lower and len(text_lower.split()) <= 5:
+                log.info(f"Галлюцинация удалена (найдена подстрока '{bad}'): '{text}'")
+                return ""
+        
+        # 3. Короткие фразы из слов-паразитов
         if len(words) <= 3 and all(word in WHISPER_HALLUCINATION_BLACKLIST for word in words):
             log.info(f"Галлюцинация удалена (слова-паразиты): '{text}'")
             return ""
+        
+        # 4. Контекстная проверка
         if WhisperRecognizer._is_hallucination_by_context(text_lower):
             log.info(f"Галлюцинация удалена (контекст): '{text}'")
             return ""
+        
         return text
 
     @staticmethod
@@ -503,6 +533,8 @@ class ClientSession:
     def __init__(self):
         self.buffer = bytearray()
         self.silence_count = 0
+        self.speech_blocks = 0          # счётчик блоков с речью подряд
+        self.last_speech_time = 0.0     # время последнего звука (не используется строго)
         self.current_text = ""
         self.session_id = uuid.uuid4().hex[:12]
         self.reconnected = False
@@ -528,6 +560,34 @@ class ClientSession:
         except Exception as e:
             log.error(f"Ошибка записи стенограммы: {e}")
 
+    def flush_if_silent(self, ws, force=False):
+        """Отправить накопленный буфер в распознавание, если достаточно тишины или принудительно."""
+        if force or (self.silence_count >= VAD_SILENCE_TRIGGER and len(self.buffer) >= SAMPLE_RATE):
+            if len(self.buffer) >= SAMPLE_RATE:
+                audio_snapshot = bytes(self.buffer)
+                self.buffer.clear()
+                self.speech_blocks = 0
+                asyncio.create_task(self.recognize_and_send(ws, audio_snapshot))
+            else:
+                self.buffer.clear()
+            self.silence_count = 0
+            self.speech_blocks = 0
+
+    async def recognize_and_send(self, ws, audio_bytes):
+        """Асинхронное распознавание и отправка результата."""
+        await ws.send(json.dumps({"type": "status", "text": "Распознаю..."}))
+        try:
+            text = await asyncio.get_event_loop().run_in_executor(None, transcribe_audio, audio_bytes)
+            if text:
+                self.current_text += text + "\n"
+                self.append_to_file(text)
+                await ws.send(json.dumps({"type": "transcript", "text": text}))
+            else:
+                await ws.send(json.dumps({"type": "status", "text": "Готов (тишина)"}))
+        except Exception as e:
+            log.error(f"Ошибка распознавания: {e}", exc_info=True)
+            await ws.send(json.dumps({"type": "error", "text": f"Ошибка распознавания: {e}"}))
+
 async def handle_client(ws):
     addr = ws.remote_address
     session = ClientSession()
@@ -542,14 +602,22 @@ async def handle_client(ws):
                 session.buffer.extend(message)
                 level = rms(message)
                 is_silent = level < SILENCE_THRESHOLD
-                session.silence_count = session.silence_count + 1 if is_silent else 0
                 await ws.send(json.dumps({"type": "level", "rms": round(level)}))
 
-                if len(session.buffer) >= CHUNK_BYTES * 3 and session.silence_count >= SILENCE_CHUNKS:
+                if is_silent:
+                    session.silence_count += 1
+                else:
+                    # звук есть – сбрасываем счётчик тишины и увеличиваем счётчик речи
+                    session.silence_count = 0
+                    session.speech_blocks += 1
+
+                # Если накопилось слишком много речи без паузы (>10 сек) – принудительно отправляем
+                if session.speech_blocks >= VAD_MAX_SPEECH_BLOCKS and len(session.buffer) >= SAMPLE_RATE:
+                    await ws.send(json.dumps({"type": "status", "text": "Длинный фрагмент, распознаю..."}))
                     audio_snapshot = bytes(session.buffer)
                     session.buffer.clear()
+                    session.speech_blocks = 0
                     session.silence_count = 0
-                    await ws.send(json.dumps({"type": "status", "text": "Распознаю..."}))
                     try:
                         text = await asyncio.get_event_loop().run_in_executor(None, transcribe_audio, audio_snapshot)
                         if text:
@@ -557,12 +625,13 @@ async def handle_client(ws):
                             session.append_to_file(text)
                             await ws.send(json.dumps({"type": "transcript", "text": text}))
                         else:
-                            await ws.send(json.dumps({"type": "status", "text": "Готов (тишина)"}))
+                            await ws.send(json.dumps({"type": "status", "text": "Готов"}))
                     except Exception as e:
-                        log.error(f"Ошибка распознавания: {e}", exc_info=True)
-                        session.buffer.clear()
-                        session.silence_count = 0
-                        await ws.send(json.dumps({"type": "error", "text": f"Ошибка распознавания: {e}"}))
+                        log.error(f"Ошибка распознавания (max speech): {e}", exc_info=True)
+                        await ws.send(json.dumps({"type": "error", "text": f"Ошибка: {e}"}))
+                else:
+                    # Обычная проверка: если достаточно тишины – отправляем
+                    session.flush_if_silent(ws)
 
             elif isinstance(message, str):
                 try:
@@ -570,26 +639,7 @@ async def handle_client(ws):
                     action = cmd.get("action")
 
                     if action == "flush":
-                        if len(session.buffer) >= SAMPLE_RATE:
-                            audio_snapshot = bytes(session.buffer)
-                            session.buffer.clear()
-                            session.silence_count = 0
-                            await ws.send(json.dumps({"type": "status", "text": "Распознаю..."}))
-                            try:
-                                text = await asyncio.get_event_loop().run_in_executor(None, transcribe_audio, audio_snapshot)
-                                if text:
-                                    session.current_text += text + "\n"
-                                    session.append_to_file(text)
-                                    await ws.send(json.dumps({"type": "transcript", "text": text}))
-                                else:
-                                    await ws.send(json.dumps({"type": "status", "text": "Готов"}))
-                            except Exception as e:
-                                log.error(f"Ошибка распознавания (flush): {e}", exc_info=True)
-                                session.buffer.clear()
-                                session.silence_count = 0
-                                await ws.send(json.dumps({"type": "error", "text": f"Ошибка распознавания: {e}"}))
-                        else:
-                            session.buffer.clear()
+                        session.flush_if_silent(ws, force=True)
                         await ws.send(json.dumps({"type": "status", "text": "Готов"}))
 
                     elif action == "save_transcript":

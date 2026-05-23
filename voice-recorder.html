@@ -296,7 +296,7 @@ input  { font: inherit; color: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-2);
-  transition: background var(--transition), color var(--transition);
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
   min-height: 44px;
   display: flex; align-items: center; justify-content: center; gap: 4px;
   white-space: nowrap;
@@ -304,6 +304,14 @@ input  { font: inherit; color: inherit; }
 .btn-action:hover { background: var(--surface-off); color: var(--text); }
 .btn-action:active { background: var(--divider); }
 .btn-action:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-action.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn-action.active:hover {
+  background: var(--primary-h);
+}
 
 /* ── Transcript Area ───────────────────────────────────────── */
 .transcript-wrap {
@@ -602,6 +610,34 @@ input  { font: inherit; color: inherit; }
   font-size: var(--text-xs); padding: var(--space-4);
 }
 
+/* ── Floating TTS Stop Button ──────────────────────────────── */
+.tts-floating-stop {
+  position: fixed;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  z-index: 500;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: var(--error);
+  color: #fff;
+  box-shadow: var(--shadow-lg), 0 0 0 4px oklch(from var(--error) l c h / 0.2);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition);
+  border: none;
+}
+.tts-floating-stop.visible { display: flex; }
+.tts-floating-stop:hover {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-lg);
+}
+.tts-floating-stop:active {
+  transform: scale(0.94);
+}
+
 /* File content viewer */
 .file-content {
   font-family: var(--font-mono);
@@ -721,7 +757,51 @@ input  { font: inherit; color: inherit; }
       </div>
     </section>
 
-
+        <!-- Action buttons -->
+    <div class="action-row">
+      <button class="btn-action" id="btnDialog" aria-label="Диалог" title="Диалог (вкл/выкл)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a8 8 0 0 0-8 8c0 3.5 2 6.5 5 8l-1 4 3-2.5c.5.1 1 .2 1 .2a8 8 0 1 0 0-16z"/>
+          <path d="M9 11h6"/><path d="M9 14h3"/>
+        </svg>
+        Диалог
+      </button>
+      <button class="btn-action" id="btnAskQuestion" aria-label="Что дальше?" title="Что дальше?">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Вопрос
+      </button>
+      <button class="btn-action" id="btnWaitToggle" aria-label="Ожидание" title="Автоматический вопрос при паузе">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        Ожидание
+      </button>
+      <button class="btn-action" id="btnSaveTranscript" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Сохранить
+      </button>
+      <button class="btn-action" id="btnClearTranscript" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        Очистить
+      </button>
+    </div>
+    <!-- Wait timeout slider -->
+    <div class="wait-settings" style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); padding: var(--space-2) var(--space-1);">
+      <span style="font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap;">⏱ Время ожидания (сек)</span>
+      <input type="range" id="waitTimeoutSlider" min="1" max="30" step="1" value="5" style="flex: 1;">
+      <span id="waitTimeoutValue" style="font-size: var(--text-xs); font-family: var(--font-mono); min-width: 2.5em; text-align: right;">5</span>
+    </div>
 
     <!-- Transcript -->
     <section class="transcript-wrap" aria-label="Текст распознавания">
@@ -748,30 +828,19 @@ input  { font: inherit; color: inherit; }
       </div>
     </section>
 
-    <!-- Action buttons -->
-    <div class="action-row">
-      <button class="btn-action" id="btnSaveTranscript" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-          <polyline points="17 21 17 13 7 13 7 21"/>
-          <polyline points="7 3 7 8 15 8"/>
-        </svg>
-        Сохранить
-      </button>
-      <button class="btn-action" id="btnClearTranscript" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </svg>
-        Очистить
-      </button>
-    </div>
-
   </main>
 
   <footer class="footer">
     Voice Stream · faster-whisper · WebSocket
   </footer>
 </div>
+
+<!-- ── Floating TTS Stop Button ─────────────────────────────── -->
+<button class="tts-floating-stop" id="btnTtsFloatingStop" aria-label="Остановить TTS" title="Остановить TTS">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+  </svg>
+</button>
 
 <!-- ── Modal: Transcript files ──────────────────────────────── -->
 <div class="modal-overlay" id="transcriptModal">
@@ -802,7 +871,6 @@ input  { font: inherit; color: inherit; }
       </button>
     </div>
     <div class="modal-body" style="display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); min-height:auto;">
-      <!-- TTS Mode Toggle -->
       <div style="display:flex; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden;">
         <button class="tts-mode-btn active" data-mode="local" style="flex:1; padding:var(--space-2); font-size:var(--text-xs); font-weight:600; transition:background var(--transition), color var(--transition); border:none; background:var(--primary); color:#fff; cursor:pointer;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle; margin-right:4px;">
@@ -820,8 +888,6 @@ input  { font: inherit; color: inherit; }
           Сервер
         </button>
       </div>
-
-      <!-- Local TTS Controls (browser speechSynthesis) -->
       <div id="ttsLocalControls">
         <div style="display:flex; gap:var(--space-2); align-items:center;">
           <label for="ttsVoiceSelect" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
@@ -835,8 +901,6 @@ input  { font: inherit; color: inherit; }
           <span id="ttsRateLabel" style="font-size:var(--text-xs); color:var(--text-muted); min-width:2.5em; text-align:right;">1.0</span>
         </div>
       </div>
-
-      <!-- Server TTS Controls -->
       <div id="ttsServerControls" style="display:none;">
         <div style="display:flex; gap:var(--space-2); align-items:center;">
           <label for="ttsServerVoice" style="font-size:var(--text-xs); color:var(--text-muted); flex-shrink:0;">Голос:</label>
@@ -852,7 +916,6 @@ input  { font: inherit; color: inherit; }
           Для серверного синтеза необходимо подключение к серверу.
         </div>
       </div>
-
       <textarea id="ttsText" class="chat-prompt-textarea" style="min-height:120px; max-height:300px;" placeholder="Введите текст для озвучивания..." aria-label="Текст для озвучивания"></textarea>
       <div style="display:flex; gap:var(--space-2);">
         <button class="btn-action" id="btnTtsSpeak" style="flex:1; background:var(--primary); color:#fff; border-color:var(--primary);">
@@ -983,7 +1046,10 @@ input  { font: inherit; color: inherit; }
 const state = {
   ws:          null,
   recording:   false,
-  wasRecording:false,  // для восстановления после переподключения
+  wasRecording:false,
+  recordingPaused: false,
+  ttsPausedRecording: false,
+  pcmBuffer: [],
   mediaStream: null,
   processor:   null,
   audioCtx:    null,
@@ -993,6 +1059,20 @@ const state = {
   maxReconnectDelay: 15000,
   pendingSave: false,
 };
+
+// Глобальные флаги
+let ttsSpeaking = false;
+let waitingForLLM = false;
+let waitingForQuestion = false;
+let questionTimeoutId = null;
+let dialogActive = false;
+
+// Для режима «Ожидание»
+let waitModeActive = false;
+let waitCheckInterval = null;
+let lastTranscriptTime = null;
+let autoQuestionSent = false;
+let currentWaitTimeout = 5;
 
 // ── DOM refs ─────────────────────────────────────────────────
 const wsUrlEl     = document.getElementById('wsUrl');
@@ -1017,6 +1097,22 @@ const modalClose    = document.getElementById('modalClose');
 const modalTitle    = document.getElementById('modalTitle');
 const modalBody     = document.getElementById('modalBody');
 
+// ── Floating TTS Stop Button ──────────────────────────────────
+const btnTtsFloatingStop = document.getElementById('btnTtsFloatingStop');
+
+function updateFloatingStopButton() {
+  if (ttsSpeaking && !ttsModal.classList.contains('open')) {
+    btnTtsFloatingStop.classList.add('visible');
+  } else {
+    btnTtsFloatingStop.classList.remove('visible');
+  }
+}
+
+btnTtsFloatingStop.addEventListener('click', () => {
+  stopSpeaking();
+  btnTtsFloatingStop.classList.remove('visible');
+});
+
 // ── Helpers ──────────────────────────────────────────────────
 function showError(msg) {
   errorBar.textContent = msg;
@@ -1036,23 +1132,6 @@ function setStatus(text, cls = '') {
   statusLabel.textContent = text;
   statusLabel.className = 'status-label ' + cls;
 }
-function addEntry(text) {
-  tEmpty.style.display = 'none';
-  const now = new Date();
-  const time = now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const entry = { time, text };
-  state.entries.push(entry);
-
-  const div = document.createElement('div');
-  div.className = 'transcript-entry';
-  div.innerHTML = `<div class="entry-time">${time}</div><div class="entry-text">${escapeHtml(text)}</div>`;
-  tScroll.appendChild(div);
-  tScroll.scrollTop = tScroll.scrollHeight;
-
-  // Enable action buttons
-  btnSave.disabled = false;
-  btnClear.disabled = false;
-}
 function escapeHtml(s) {
   return s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
 }
@@ -1064,6 +1143,28 @@ function setVolume(rms) {
 }
 function getTranscriptText() {
   return state.entries.map(e => `[${e.time}] ${e.text}`).join('\n');
+}
+
+// ── addEntry with timestamp for wait mode ────────────────────
+function addEntry(text) {
+  tEmpty.style.display = 'none';
+  const now = new Date();
+  const nowTimestamp = Date.now();
+  const time = now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const entry = { time, text };
+  state.entries.push(entry);
+
+  lastTranscriptTime = nowTimestamp;
+  autoQuestionSent = false; // новое сообщение — сброс флага для нового цикла ожидания
+
+  const div = document.createElement('div');
+  div.className = 'transcript-entry';
+  div.innerHTML = `<div class="entry-time">${time}</div><div class="entry-text">${escapeHtml(text)}</div>`;
+  tScroll.appendChild(div);
+  tScroll.scrollTop = tScroll.scrollHeight;
+
+  btnSave.disabled = false;
+  btnClear.disabled = false;
 }
 
 // ── Modal: Transcript File Browser ───────────────────────────
@@ -1115,7 +1216,6 @@ function renderFileList(files) {
   }
   modalBody.innerHTML = html;
 
-  // Click to view file
   modalBody.querySelectorAll('.file-item').forEach(el => {
     el.addEventListener('click', (e) => {
       if (e.target.closest('.file-delete-btn')) return;
@@ -1124,7 +1224,6 @@ function renderFileList(files) {
     });
   });
 
-  // Delete button
   modalBody.querySelectorAll('.file-delete-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1166,7 +1265,6 @@ function requestFileDelete(filename) {
   }
 }
 
-// Modal events
 btnTranscripts.addEventListener('click', openFileBrowser);
 modalClose.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => {
@@ -1202,10 +1300,8 @@ function connect() {
 
     state.reconnectAttempt = 0;
 
-    // Если мы переподключаемся и шла запись — возобновляем
     if (state.wasRecording) {
       setStatus('Переподключено, возобновляю запись...', 'reconnecting');
-      // Небольшая задержка, чтобы сервер успел обработать reconnect
       setTimeout(() => startRecording(), 500);
     } else {
       setStatus('Готов к записи');
@@ -1226,17 +1322,17 @@ function connect() {
       stopRecording();
     }
 
+    state.recordingPaused = false;
+    state.ttsPausedRecording = false;
+
     setStatus('Подключитесь к серверу');
 
-    // Auto-reconnect if was previously connected or was recording
     if (wasConnected || state.wasRecording) {
       scheduleReconnect();
     }
   };
 
-  state.ws.onerror = () => {
-    // onclose will fire after onerror
-  };
+  state.ws.onerror = () => {};
 
   state.ws.onmessage = (e) => {
     try {
@@ -1248,6 +1344,21 @@ function connect() {
       } else if (msg.type === 'transcript') {
         addEntry(msg.text);
         setStatus('Готов к записи');
+        // Dialog mode
+        if (dialogActive && (waitingForLLM || ttsSpeaking)) {
+          setStatus('Диалог: занят, пропуск фразы', 'active');
+          return;
+        }
+        if (dialogActive && !waitingForLLM && state.ws?.readyState === WebSocket.OPEN) {
+          const text = msg.text;
+          waitingForLLM = true;
+          addChatMessage('user', text);
+          llmHistory.push({ role: 'user', content: text });
+          showChatLoading();
+          setStatus('Диалог: ожидание LLM...', 'active');
+          const msgs = buildMessagesWithPrompt();
+          state.ws.send(JSON.stringify({ action: 'chat', messages: msgs }));
+        }
       } else if (msg.type === 'status') {
         setStatus(msg.text, msg.text.includes('Распо') ? 'processing' : '');
       } else if (msg.type === 'error') {
@@ -1263,40 +1374,60 @@ function connect() {
         renderFileContent(msg.filename, msg.content);
       } else if (msg.type === 'file_deleted') {
         showInfo(`Файл «${msg.filename}» удалён`);
-        requestFileList(); // refresh list
+        requestFileList();
       } else if (msg.type === 'reconnect_ack') {
-        // Server acknowledged reconnect
       } else if (msg.type === 'chat_response') {
         hideChatLoading();
         if (msg.error) {
           addChatMessage('system', 'Ошибка: ' + msg.error);
+          if (dialogActive) {
+            waitingForLLM = false;
+            setStatus('Диалог: ошибка', '');
+          }
+          if (waitingForQuestion) {
+            waitingForQuestion = false;
+            resumeRecordingFromTTS();
+            autoQuestionSent = false;
+          }
         } else if (msg.response) {
           addChatMessage('assistant', msg.response);
           llmHistory.push({ role: 'assistant', content: msg.response });
+
+          if (waitingForQuestion) {
+            waitingForQuestion = false;
+            waitingForLLM = false;
+            if (questionTimeoutId) {
+              clearTimeout(questionTimeoutId);
+              questionTimeoutId = null;
+            }
+            setStatus('Вопрос: озвучивание...', 'active');
+            ttsText.value = msg.response;
+            speakText();
+          } else if (dialogActive) {
+            waitingForLLM = false;
+            setStatus('Диалог: озвучивание...', 'active');
+            ttsText.value = msg.response;
+            speakText();
+          }
         }
       } else if (msg.type === 'prompt_list') {
         renderPromptList(msg.prompts);
       } else if (msg.type === 'prompt_content') {
-        // Check if we need to load this prompt into chat after getting content
         if (state._promptLoadAfterLoad) {
           chatPromptInput.value = msg.content || '';
-          // Auto-open prompt area if not open
           if (!promptOpen) {
             promptOpen = true;
             chatPromptArea.classList.add('open');
           }
           showInfo(`Промпт «${msg.name}» загружен в чат`);
           state._promptLoadAfterLoad = null;
-          // If prompt modal is still open, refresh list
           if (promptModal.classList.contains('open')) {
             requestPromptList();
           }
         } else if (state._promptEditAfterLoad) {
-          // Open editor with loaded content
           showPromptEditor(msg.name, msg.content);
           state._promptEditAfterLoad = null;
         } else {
-          // Just view the content
           renderPromptContent(msg.name, msg.content);
         }
       } else if (msg.type === 'prompt_saved') {
@@ -1312,7 +1443,7 @@ function connect() {
 
 function scheduleReconnect() {
   if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
-    return; // already connected/connecting
+    return;
   }
   state.reconnectAttempt++;
   const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempt), state.maxReconnectDelay);
@@ -1330,7 +1461,7 @@ function disconnect() {
   state.reconnectAttempt = 0;
   if (state.recording) stopRecording();
   if (state.ws) {
-    state.ws.onclose = null; // prevent auto-reconnect
+    state.ws.onclose = null;
     state.ws.close();
     state.ws = null;
   }
@@ -1365,31 +1496,36 @@ async function startRecording() {
     return;
   }
 
+  state.recordingPaused = false;
+  state.ttsPausedRecording = false;
+  state.pcmBuffer = [];
+
   state.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
   const source = state.audioCtx.createMediaStreamSource(state.mediaStream);
 
   state.processor = state.audioCtx.createScriptProcessor(FRAME_SIZE, 1, 1);
 
-  let pcmBuffer = [];
   let lastFlush = Date.now();
 
   state.processor.onaudioprocess = (e) => {
+    if (state.recordingPaused) return;
+
     const f32 = e.inputBuffer.getChannelData(0);
     const i16 = new Int16Array(f32.length);
     for (let i = 0; i < f32.length; i++) {
       let s = Math.max(-1, Math.min(1, f32[i]));
       i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
     }
-    pcmBuffer.push(i16.buffer);
+    state.pcmBuffer.push(i16.buffer);
 
     const now = Date.now();
     if (now - lastFlush >= CHUNK_PERIOD) {
       lastFlush = now;
-      const total = pcmBuffer.reduce((n, b) => n + b.byteLength, 0);
+      const total = state.pcmBuffer.reduce((n, b) => n + b.byteLength, 0);
       const merged = new Uint8Array(total);
       let offset = 0;
-      for (const buf of pcmBuffer) { merged.set(new Uint8Array(buf), offset); offset += buf.byteLength; }
-      pcmBuffer = [];
+      for (const buf of state.pcmBuffer) { merged.set(new Uint8Array(buf), offset); offset += buf.byteLength; }
+      state.pcmBuffer = [];
       if (state.ws?.readyState === WebSocket.OPEN) {
         state.ws.send(merged.buffer);
       }
@@ -1404,9 +1540,39 @@ async function startRecording() {
   btnMic.setAttribute('aria-label', 'Остановить запись');
   micWrap.classList.add('recording');
   setStatus('Запись…', 'active');
+
+  // Запуск мониторинга ожидания, если режим активен
+  if (waitModeActive && !dialogActive) {
+    startWaitMonitoring();
+  }
+}
+
+function pauseRecordingForTTS() {
+  if (state.recording && !state.recordingPaused) {
+    state.recordingPaused = true;
+    state.ttsPausedRecording = true;
+    if (state.pcmBuffer) state.pcmBuffer = [];
+    setStatus('Запись приостановлена (TTS)', 'active');
+  }
+}
+
+function resumeRecordingFromTTS() {
+  if (state.recording && state.recordingPaused && state.ttsPausedRecording) {
+    state.recordingPaused = false;
+    state.ttsPausedRecording = false;
+    if (state.pcmBuffer) state.pcmBuffer = [];
+    setStatus('Запись...', 'active');
+  }
 }
 
 function stopRecording() {
+  stopWaitMonitoring();
+  autoQuestionSent = false;
+  lastTranscriptTime = null;
+
+  state.recordingPaused = false;
+  state.ttsPausedRecording = false;
+
   if (state.processor) {
     state.processor.disconnect();
     state.processor = null;
@@ -1419,7 +1585,6 @@ function stopRecording() {
     state.audioCtx.close();
     state.audioCtx = null;
   }
-  // Flush remaining buffer on server
   if (state.ws?.readyState === WebSocket.OPEN) {
     state.ws.send(JSON.stringify({ action: 'flush' }));
   }
@@ -1443,7 +1608,7 @@ btnMic.addEventListener('click', () => {
   }
 });
 
-// ── Save transcript to file ──────────────────────────────────
+// ── Save transcript ──────────────────────────────────────────
 btnSave.addEventListener('click', () => {
   if (state.pendingSave) return;
   if (state.entries.length === 0) return;
@@ -1463,6 +1628,13 @@ btnClear.addEventListener('click', () => {
   btnSave.disabled = true;
   btnClear.disabled = true;
   showInfo('Стенограмма очищена');
+  // Сброс времени для режима ожидания
+  lastTranscriptTime = null;
+  autoQuestionSent = false;
+  if (waitModeActive && state.recording) {
+    stopWaitMonitoring();
+    startWaitMonitoring();
+  }
 });
 
 // ── Copy transcript ──────────────────────────────────────────
@@ -1527,10 +1699,8 @@ function hideChatLoading() {
 function buildMessagesWithPrompt() {
   const prompt = chatPromptInput.value.trim();
   if (prompt) {
-    // Добавляем system сообщение первым, если ещё не добавлено
     const hasSystem = llmHistory.length > 0 && llmHistory[0].role === 'system';
     if (hasSystem) {
-      // Обновляем существующий system промпт
       llmHistory[0].content = prompt;
       return llmHistory;
     } else {
@@ -1562,46 +1732,194 @@ function sendChatMessage() {
   chatInput.focus();
 }
 
-// Open LLM chat modal
 btnLlmChat.addEventListener('click', () => {
   llmModal.classList.add('open');
   chatInput.focus();
 });
-
-// Close
 llmModalClose.addEventListener('click', () => {
   llmModal.classList.remove('open');
 });
 llmModal.addEventListener('click', (e) => {
   if (e.target === llmModal) llmModal.classList.remove('open');
 });
-
-// Send on button click
 chatSendBtn.addEventListener('click', sendChatMessage);
-
-// Send on Enter (Shift+Enter for newline)
 chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendChatMessage();
   }
 });
-
-// Toggle system prompt area
 btnTogglePrompt.addEventListener('click', () => {
   promptOpen = !promptOpen;
   chatPromptArea.classList.toggle('open', promptOpen);
   if (promptOpen) chatPromptInput.focus();
 });
-
-// Clear chat history
 btnClearChat.addEventListener('click', () => {
   if (llmHistory.length === 0) return;
   llmHistory = [];
   chatMessages.querySelectorAll('.chat-msg').forEach(el => el.remove());
-  // Restore system message
   addChatMessage('system', 'Отправьте сообщение LLM. Ответ придёт от сервера.');
 });
+
+// ── Общая функция отправки вопроса ───────────────────────────
+function askQuestion() {
+  const text = 'Что дальше?';
+  addChatMessage('user', text);
+  llmHistory.push({ role: 'user', content: text });
+  showChatLoading();
+
+  waitingForQuestion = true;
+  waitingForLLM = false;
+  pauseRecordingForTTS();
+  setStatus('Вопрос: ожидание LLM...', 'active');
+
+  if (questionTimeoutId) clearTimeout(questionTimeoutId);
+  questionTimeoutId = setTimeout(() => {
+    if (waitingForQuestion) {
+      waitingForQuestion = false;
+      waitingForLLM = false;
+      hideChatLoading();
+      resumeRecordingFromTTS();
+      autoQuestionSent = false;
+      showError('Вопрос: таймаут ожидания ответа');
+      setStatus('Вопрос: ошибка таймаута', '');
+    }
+  }, 30000);
+
+  const msgs = buildMessagesWithPrompt();
+  state.ws.send(JSON.stringify({
+    action: 'chat',
+    messages: msgs,
+  }));
+}
+
+function resetQuestionFlags() {
+  waitingForQuestion = false;
+  waitingForLLM = false;
+  if (questionTimeoutId) {
+    clearTimeout(questionTimeoutId);
+    questionTimeoutId = null;
+  }
+}
+
+// ── Автоматический вопрос по таймауту тишины ─────────────────
+function sendAutoQuestion() {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (waitingForQuestion || waitingForLLM) return;
+
+  showInfo('Автовопрос: Что дальше?');
+  // Используем ту же askQuestion, но сбрасываем autoQuestionSent после ответа
+  askQuestion();
+}
+
+function startWaitMonitoring() {
+  if (waitCheckInterval) clearInterval(waitCheckInterval);
+  autoQuestionSent = false;
+  // Обновляем время последнего сообщения
+  if (state.entries.length > 0) {
+    lastTranscriptTime = Date.now();
+  } else {
+    lastTranscriptTime = null;
+  }
+  waitCheckInterval = setInterval(() => {
+    if (!waitModeActive || !state.recording || dialogActive || waitingForQuestion || waitingForLLM || ttsSpeaking) {
+      return;
+    }
+    if (state.entries.length === 0) return;
+    if (autoQuestionSent) return;
+    if (lastTranscriptTime === null) {
+      lastTranscriptTime = Date.now();
+      return;
+    }
+    const secondsSinceLast = (Date.now() - lastTranscriptTime) / 1000;
+    if (secondsSinceLast >= currentWaitTimeout) {
+      autoQuestionSent = true;
+      sendAutoQuestion();
+    }
+  }, 1000);
+}
+
+function stopWaitMonitoring() {
+  if (waitCheckInterval) {
+    clearInterval(waitCheckInterval);
+    waitCheckInterval = null;
+  }
+  autoQuestionSent = false;
+}
+
+// ── Wait Toggle ──────────────────────────────────────────────
+const btnWaitToggle = document.getElementById('btnWaitToggle');
+const waitTimeoutSlider = document.getElementById('waitTimeoutSlider');
+const waitTimeoutValue = document.getElementById('waitTimeoutValue');
+
+waitTimeoutSlider.addEventListener('input', () => {
+  currentWaitTimeout = parseInt(waitTimeoutSlider.value, 10);
+  waitTimeoutValue.textContent = currentWaitTimeout;
+  autoQuestionSent = false;
+});
+
+btnWaitToggle.addEventListener('click', () => {
+  if (dialogActive) {
+    showError('Режим «Ожидание» недоступен, когда включён «Диалог»');
+    return;
+  }
+  waitModeActive = !waitModeActive;
+  btnWaitToggle.classList.toggle('active', waitModeActive);
+  if (waitModeActive) {
+    startWaitMonitoring();
+    setStatus('Ожидание: жду паузу...', 'active');
+  } else {
+    stopWaitMonitoring();
+    if (state.recording) {
+      setStatus('Запись...', 'active');
+    } else {
+      setStatus('Готов к записи');
+    }
+  }
+});
+
+// ── Dialog Mode ────────────────────────────────────────────────
+const btnDialog = document.getElementById('btnDialog');
+
+btnDialog.addEventListener('click', () => {
+  dialogActive = !dialogActive;
+  btnDialog.classList.toggle('active', dialogActive);
+  if (dialogActive) {
+    // Если был включён режим ожидания — выключаем
+    if (waitModeActive) {
+      waitModeActive = false;
+      btnWaitToggle.classList.remove('active');
+      stopWaitMonitoring();
+      showInfo('Режим «Ожидание» отключён из-за включения диалога');
+    }
+    btnWaitToggle.disabled = true;
+    btnWaitToggle.style.opacity = '0.5';
+    setStatus('Диалог включён', 'active');
+  } else {
+    btnWaitToggle.disabled = false;
+    btnWaitToggle.style.opacity = '1';
+    waitingForLLM = false;
+    setStatus('Готов к записи');
+  }
+});
+
+// ── Button «Вопрос» event ──────────────────────────────────────
+const btnAskQuestion = document.getElementById('btnAskQuestion');
+if (btnAskQuestion) {
+  btnAskQuestion.addEventListener('click', () => {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+      showError('Нет подключения к серверу');
+      return;
+    }
+    if (waitingForQuestion || waitingForLLM) {
+      showError('Дождитесь ответа на предыдущий запрос');
+      return;
+    }
+    // Сброс autoQuestionSent, чтобы после ответа автоматика снова работала
+    autoQuestionSent = false;
+    askQuestion();
+  });
+}
 
 // ── Prompts Management ────────────────────────────────────────
 const promptModal        = document.getElementById('promptModal');
@@ -1611,7 +1929,7 @@ const promptModalTitle   = document.getElementById('promptModalTitle');
 const btnPromptNew       = document.getElementById('btnPromptNew');
 const btnManagePrompts   = document.getElementById('btnManagePrompts');
 
-let currentPromptName = null; // имя редактируемого/создаваемого промпта
+let currentPromptName = null;
 
 function openPromptManager() {
   promptModal.classList.add('open');
@@ -1678,7 +1996,6 @@ function renderPromptList(prompts) {
   }
   promptModalBody.innerHTML = html;
 
-  // Load prompt into chat
   promptModalBody.querySelectorAll('.prompt-load-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1687,7 +2004,6 @@ function renderPromptList(prompts) {
     });
   });
 
-  // Edit prompt
   promptModalBody.querySelectorAll('.prompt-edit-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1696,7 +2012,6 @@ function renderPromptList(prompts) {
     });
   });
 
-  // Delete prompt
   promptModalBody.querySelectorAll('.file-delete-btn:not(.prompt-load-btn):not(.prompt-edit-btn)').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1707,7 +2022,6 @@ function renderPromptList(prompts) {
     });
   });
 
-  // Click to view
   promptModalBody.querySelectorAll('.file-item').forEach(el => {
     el.addEventListener('click', (e) => {
       if (e.target.closest('.file-delete-btn') || e.target.closest('.prompt-load-btn') || e.target.closest('.prompt-edit-btn')) return;
@@ -1832,7 +2146,6 @@ function requestDeletePrompt(name) {
   }
 }
 
-// Prompt modal events
 btnManagePrompts.addEventListener('click', openPromptManager);
 promptModalClose.addEventListener('click', closePromptManager);
 promptModal.addEventListener('click', (e) => {
@@ -1857,16 +2170,13 @@ const ttsServerCtrl   = document.getElementById('ttsServerControls');
 const ttsModeBtns     = document.querySelectorAll('.tts-mode-btn');
 
 let ttsVoices    = [];
-let ttsSpeaking  = false;
-let ttsMode      = 'local'; // 'local' | 'server'
+let ttsMode      = 'local';
 
-// Server TTS: AudioContext for playback
 let ttsAudioCtx  = null;
 let ttsBufferQueue = [];
 let ttsPlaySource = null;
 let ttsIsPlaying  = false;
 
-// ── TTS Mode toggle ──────────────────────────────────────────
 ttsModeBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     ttsModeBtns.forEach(b => { b.style.background = 'transparent'; b.style.color = 'var(--text-muted)'; });
@@ -1876,12 +2186,10 @@ ttsModeBtns.forEach(btn => {
     ttsLocalCtrl.style.display = ttsMode === 'local' ? 'block' : 'none';
     ttsServerCtrl.style.display = ttsMode === 'server' ? 'block' : 'none';
     ttsStatus.textContent = 'Готов';
-    // Stop any ongoing speech
     if (ttsSpeaking) stopSpeaking();
   });
 });
 
-// ── Local TTS (browser speechSynthesis) ──────────────────────
 function loadTtsVoices() {
   ttsVoices = speechSynthesis.getVoices();
   ttsVoiceSelect.innerHTML = '';
@@ -1919,14 +2227,26 @@ function speakLocal() {
   utter.onstart = () => {
     ttsSpeaking = true; btnTtsSpeak.disabled = true; btnTtsStop.disabled = false;
     ttsStatus.textContent = 'Озвучивание...';
+    pauseRecordingForTTS();
+    updateFloatingStopButton();
   };
   utter.onend = () => {
     ttsSpeaking = false; btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
     ttsStatus.textContent = 'Готов';
+    resumeRecordingFromTTS();
+    updateFloatingStopButton();
+    // Сброс флага автовопроса после озвучивания
+    autoQuestionSent = false;
+    if (waitModeActive && state.recording && !dialogActive) {
+      startWaitMonitoring();
+    }
   };
   utter.onerror = (e) => {
     ttsSpeaking = false; btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
     ttsStatus.textContent = 'Ошибка: ' + e.error;
+    resumeRecordingFromTTS();
+    updateFloatingStopButton();
+    autoQuestionSent = false;
   };
   speechSynthesis.speak(utter);
 }
@@ -1936,9 +2256,10 @@ function stopLocal() {
   ttsSpeaking = false;
   btnTtsSpeak.disabled = false; btnTtsStop.disabled = true;
   ttsStatus.textContent = 'Остановлено';
+  resumeRecordingFromTTS();
+  updateFloatingStopButton();
 }
 
-// ── Server TTS (WebSocket → Silero) ──────────────────────────
 function speakServer() {
   const text = ttsText.value.trim();
   if (!text) { ttsStatus.textContent = 'Введите текст'; return; }
@@ -1953,6 +2274,8 @@ function speakServer() {
   btnTtsSpeak.disabled = true;
   btnTtsStop.disabled = false;
   ttsStatus.textContent = 'Запрос синтеза...';
+  pauseRecordingForTTS();
+  updateFloatingStopButton();
 
   const speaker = ttsServerVoice.value;
   state.ws.send(JSON.stringify({
@@ -1977,13 +2300,14 @@ function stopServerPlayback() {
   btnTtsSpeak.disabled = false;
   btnTtsStop.disabled = true;
   ttsStatus.textContent = 'Остановлено';
+  resumeRecordingFromTTS();
+  updateFloatingStopButton();
 }
 
 function playServerAudio(pcmData, sampleRate) {
   if (!ttsAudioCtx) {
     ttsAudioCtx = new AudioContext({ sampleRate: sampleRate });
   }
-  // Convert PCM16 (Int16) to Float32
   const i16 = new Int16Array(pcmData);
   const f32 = new Float32Array(i16.length);
   for (let i = 0; i < i16.length; i++) {
@@ -2013,6 +2337,12 @@ function playNextInQueue() {
       btnTtsSpeak.disabled = false;
       btnTtsStop.disabled = true;
       ttsStatus.textContent = 'Готов';
+      resumeRecordingFromTTS();
+      updateFloatingStopButton();
+      autoQuestionSent = false;
+      if (waitModeActive && state.recording && !dialogActive) {
+        startWaitMonitoring();
+      }
     }
   };
   ttsPlaySource.start();
@@ -2034,7 +2364,6 @@ function speakText() {
   }
 }
 
-// ── Button events ────────────────────────────────────────────
 btnTts.addEventListener('click', () => {
   loadTtsVoices();
   ttsModal.classList.add('open');
@@ -2052,13 +2381,11 @@ ttsModal.addEventListener('click', (e) => {
 btnTtsSpeak.addEventListener('click', speakText);
 btnTtsStop.addEventListener('click', stopSpeaking);
 
-// Load local voices
 if (speechSynthesis.onvoiceschanged !== undefined) {
   speechSynthesis.onvoiceschanged = loadTtsVoices;
 }
 
 // ── WebSocket message handling for TTS ───────────────────────
-// Добавляем обработку TTS-сообщений и бинарного аудио
 (function patchWsMessage() {
   const checkInterval = setInterval(() => {
     if (state.ws) {
@@ -2079,6 +2406,14 @@ if (speechSynthesis.onvoiceschanged !== undefined) {
               state._ttsMeta = null;
             } else if (msg.type === 'tts_status') {
               ttsStatus.textContent = msg.text;
+            } else if (msg.type === 'error' && msg.text && msg.text.includes('TTS не выдал аудио')) {
+              ttsSpeaking = false;
+              btnTtsSpeak.disabled = false;
+              btnTtsStop.disabled = true;
+              ttsStatus.textContent = 'Ошибка TTS';
+              resumeRecordingFromTTS();
+              updateFloatingStopButton();
+              autoQuestionSent = false;
             }
           } catch {}
         }
