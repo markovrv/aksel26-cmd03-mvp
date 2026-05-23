@@ -1073,6 +1073,7 @@ let waitCheckInterval = null;
 let lastTranscriptTime = null;
 let autoQuestionSent = false;
 let currentWaitTimeout = 5;
+let rms = 0;
 
 // ── DOM refs ─────────────────────────────────────────────────
 const wsUrlEl     = document.getElementById('wsUrl');
@@ -1341,6 +1342,7 @@ function connect() {
         state.sessionId = msg.session_id;
       } else if (msg.type === 'level') {
         setVolume(msg.rms);
+        rms = msg.rms;
       } else if (msg.type === 'transcript') {
         addEntry(msg.text);
         setStatus('Готов к записи');
@@ -1806,6 +1808,7 @@ function resetQuestionFlags() {
 function sendAutoQuestion() {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
   if (waitingForQuestion || waitingForLLM) return;
+  if (rms > 100) return; // Если громкость выше порога — не задаём вопрос (10 — порог громкости в dB
 
   showInfo('Автовопрос: Что дальше?');
   // Используем ту же askQuestion, но сбрасываем autoQuestionSent после ответа

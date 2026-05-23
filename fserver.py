@@ -58,8 +58,6 @@ log = logging.getLogger("voice-server")
 HOST = "0.0.0.0"
 PORT = 8765
 MODEL_SIZE = "medium"        # tiny | base | small | medium | large-v3
-DEVICE = "cuda"               # cpu | cuda
-COMPUTE_TYPE = "float16"      # int8 (CPU), float16 (GPU)
 LANGUAGE = "ru"               # язык распознавания (None — автоопределение)
 SAMPLE_RATE = 16000
 CHUNK_BYTES = SAMPLE_RATE * 2 * 1          # 1 секунда, 16-bit PCM, моно
@@ -100,6 +98,11 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 # ─────────────────────────────────────────────────────────────
 
+# ── Whisper (распознавание речи) ────────────────────────────
+DEVICE = os.environ.get("DEVICE", "cuda")               # cpu | cuda
+COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "float16")      # int8 (CPU), float16 (GPU)
+# ─────────────────────────────────────────────────────────────
+
 # ── Настройки анти-галлюцинаций ─────────────────────────────
 NO_SPEECH_THRESHOLD = 0.85
 WHISPER_HALLUCINATION_BLACKLIST = [ 
@@ -112,10 +115,13 @@ WHISPER_HALLUCINATION_BLACKLIST = [
     "тихо, тихо",
     "тихо-тихо",
     "фактфронт",
+    "еще услышемся",
     "фондю любит тебя",
     "подписывайтесь",
     "с вами был игорь негода",
     "продолжение следует",
+    "благодарю за внимание",
+    "добро пожаловать на наш канал",
     "динамичная музыка",
     "спокойная музыка",
 ]
