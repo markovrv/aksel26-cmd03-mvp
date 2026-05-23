@@ -115,7 +115,11 @@ WHISPER_HALLUCINATION_BLACKLIST = [
     "тихо, тихо",
     "тихо-тихо",
     "фактфронт",
+    "конец",
+    "упсик",
+    "добро пожаловать",
     "еще услышемся",
+    "пишите в комментариях, что вы хотите увидеть",
     "фондю любит тебя",
     "подписывайтесь",
     "с вами был игорь негода",
@@ -410,6 +414,27 @@ def save_transcript_to_file(text: str, prefix: str = "transcript") -> str | None
         log.error(f"Ошибка сохранения стенограммы: {e}")
         return None
 
+
+def format_transcript_entries(entries: list) -> str:
+    """Форматирует список записей стенограммы (с ролями) в читаемый текст."""
+    lines = []
+    for entry in entries:
+        time_str = entry.get("time", "")
+        role = entry.get("role", "")
+        text = entry.get("text", "")
+        source = entry.get("source", "")
+        if role == "user":
+            label = "Гид"
+        elif role == "assistant":
+            label = "Агент"
+        else:
+            label = role.capitalize() if role else "Сообщение"
+        if source:
+            lines.append(f"[{time_str}] {label} (источник: {source}): {text}")
+        else:
+            lines.append(f"[{time_str}] {label}: {text}")
+    return "\n".join(lines)
+
 # ---------- LLM ----------
 def call_llm_sync(messages: list) -> dict:
     if not HAS_HTTPX:
@@ -649,7 +674,12 @@ async def handle_client(ws):
                         await ws.send(json.dumps({"type": "status", "text": "Готов"}))
 
                     elif action == "save_transcript":
-                        fname = save_transcript_to_file(session.current_text)
+                        entries = cmd.get("entries")
+                        if entries and isinstance(entries, list) and len(entries) > 0:
+                            formatted = format_transcript_entries(entries)
+                            fname = save_transcript_to_file(formatted)
+                        else:
+                            fname = save_transcript_to_file(session.current_text)
                         await ws.send(json.dumps({"type": "file_saved" if fname else "error", "filename": fname or "", "text": "Стенограмма сохранена" if fname else "Нет текста для сохранения"}))
 
                     elif action == "list_transcripts":
