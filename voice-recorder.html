@@ -1229,6 +1229,22 @@
           </svg>
           Сохранить
         </button>
+        <button class="btn-action" id="btnReportTranscript" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          Отчёт
+        </button>
+        <button class="btn-action" id="btnSummaryPrompt" disabled title="Редактировать промпт суммаризации">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
         <button class="btn-action" id="btnClearTranscript" disabled>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6" />
@@ -1391,6 +1407,42 @@
     </div>
   </div>
 
+  <!-- ── Modal: Summary Prompt ─────────────────────────────── -->
+  <div class="modal-overlay prompt-overlay" id="summaryPromptModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Промпт суммаризации">
+      <div class="modal-header">
+        <span class="modal-title">Промпт суммаризации</span>
+        <button class="modal-close" id="summaryPromptModalClose" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:var(--space-3); padding:var(--space-4); min-height:auto;">
+        <div style="font-size:var(--text-xs); color:var(--text-muted);">
+          Системный промпт, используемый при суммаризации текста.
+        </div>
+        <textarea class="chat-prompt-textarea" id="summaryPromptTextarea" style="min-height:200px; max-height:400px; width:100%;"
+          placeholder="Введите текст системного промпта для суммаризации..." aria-label="Промпт суммаризации"></textarea>
+        <div style="display:flex; gap:var(--space-2);">
+          <button class="btn-action" id="btnSaveSummaryPrompt" style="flex:2; background:var(--primary); color:#fff; border-color:var(--primary);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Сохранить
+          </button>
+          <button class="btn-action" id="btnCancelSummaryPrompt" style="flex:1;">
+            Отмена
+          </button>
+        </div>
+        <div style="font-size:var(--text-xs); color:var(--text-faint); text-align:center;" id="summaryPromptStatus"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Modal: LLM Chat ─────────────────────────────────────── -->
   <div class="modal-overlay" id="llmModal">
     <div class="modal" role="dialog" aria-modal="true" aria-label="LLM чат">
@@ -1532,8 +1584,17 @@
     const tEmpty = document.getElementById('transcriptEmpty');
     const btnCopy = document.getElementById('btnCopy');
     const btnSave = document.getElementById('btnSaveTranscript');
+    const btnReport = document.getElementById('btnReportTranscript');
+    const btnSummaryPromptBtn = document.getElementById('btnSummaryPrompt');
     const btnClear = document.getElementById('btnClearTranscript');
     const btnTranscripts = document.getElementById('btnTranscripts');
+    const summaryPromptModal = document.getElementById('summaryPromptModal');
+    const summaryPromptModalClose = document.getElementById('summaryPromptModalClose');
+    const summaryPromptTextarea = document.getElementById('summaryPromptTextarea');
+    const btnSaveSummaryPrompt = document.getElementById('btnSaveSummaryPrompt');
+    const btnCancelSummaryPrompt = document.getElementById('btnCancelSummaryPrompt');
+    const summaryPromptStatus = document.getElementById('summaryPromptStatus');
+    let summaryPromptSaving = false;
     const modalOverlay = document.getElementById('transcriptModal');
     const modalClose = document.getElementById('modalClose');
     const modalTitle = document.getElementById('modalTitle');
@@ -1775,6 +1836,8 @@
         btnConnect.textContent = 'Отключить';
         btnConnect.disabled = false;
         btnMic.disabled = false;
+        btnReport.disabled = false;
+        btnSummaryPromptBtn.disabled = false;
 
         state.reconnectAttempt = 0;
 
@@ -1794,6 +1857,8 @@
         btnMic.disabled = true;
         btnSave.disabled = true;
         btnClear.disabled = true;
+        btnReport.disabled = true;
+        btnSummaryPromptBtn.disabled = true;
 
         if (state.recording) {
           state.wasRecording = true;
@@ -1922,6 +1987,50 @@
           } else if (msg.type === 'prompt_deleted') {
             showInfo(`Промпт «${msg.name}» удалён`);
             requestPromptList();
+          }
+
+          // ----- Summary messages (action-based) -----
+          // summary_prompt_get
+          if (msg.action === 'summary_prompt_get') {
+            if (summaryPromptModal.classList.contains('open')) {
+              summaryPromptTextarea.value = msg.prompt || '';
+              summaryPromptTextarea.disabled = false;
+            }
+          }
+          // summary_prompt_save
+          if (msg.action === 'summary_prompt_save') {
+            if (summaryPromptModal.classList.contains('open')) {
+              summaryPromptSaving = false;
+              btnSaveSummaryPrompt.disabled = false;
+              if (msg.status === 'ok') {
+                summaryPromptStatus.textContent = 'Сохранено!';
+                showInfo('Промпт суммаризации сохранён');
+                setTimeout(closeSummaryPromptModal, 800);
+              } else {
+                summaryPromptStatus.textContent = 'Ошибка: ' + (msg.message || 'неизвестная ошибка');
+                showError('Ошибка сохранения промпта суммаризации');
+              }
+            }
+          }
+          // summary_get
+          if (msg.action === 'summary_get') {
+            btnReport.disabled = false;
+            if (msg.summary) {
+              setStatus('Отчёт получен', '');
+              // Скачиваем как текстовый файл
+              const ts = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+              const filename = `report_${ts}.txt`;
+              const encoded = btoa(unescape(encodeURIComponent(msg.summary)));
+              const dataUri = `data:text/plain;base64,${encoded}`;
+              const a = document.createElement('a');
+              a.href = dataUri;
+              a.download = filename;
+              a.click();
+              showInfo(`Отчёт сохранён: ${filename}`);
+            } else if (msg.error) {
+              setStatus('Ошибка отчёта', '');
+              showError('Отчёт: ' + msg.error);
+            }
           }
         } catch { }
       };
@@ -2954,6 +3063,60 @@
         }
       }, 100);
     })();
+
+    // ── Кнопка "Отчёт" ──────────────────────────────────────────
+    btnReport.addEventListener('click', () => {
+      if (state.entries.length === 0) {
+        showError('Нет текста для суммаризации');
+        return;
+      }
+      if (state.ws?.readyState !== WebSocket.OPEN) {
+        showError('Нет подключения к серверу');
+        return;
+      }
+      const text = getTranscriptText();
+      setStatus('Отчёт: ожидание LLM...', 'processing');
+      btnReport.disabled = true;
+      state.ws.send(JSON.stringify({ action: 'summary_get', text: text }));
+    });
+
+    // ── Summary Prompt Modal ─────────────────────────────────────
+    btnSummaryPromptBtn.addEventListener('click', () => {
+      summaryPromptTextarea.value = 'Загрузка...';
+      summaryPromptStatus.textContent = '';
+      summaryPromptModal.classList.add('open');
+      if (state.ws?.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ action: 'summary_prompt_get' }));
+      } else {
+        summaryPromptTextarea.value = 'Нет подключения к серверу';
+        summaryPromptTextarea.disabled = true;
+      }
+    });
+
+    function closeSummaryPromptModal() {
+      summaryPromptModal.classList.remove('open');
+      summaryPromptSaving = false;
+    }
+
+    summaryPromptModalClose.addEventListener('click', closeSummaryPromptModal);
+    summaryPromptModal.addEventListener('click', (e) => {
+      if (e.target === summaryPromptModal) closeSummaryPromptModal();
+    });
+
+    btnCancelSummaryPrompt.addEventListener('click', closeSummaryPromptModal);
+
+    btnSaveSummaryPrompt.addEventListener('click', () => {
+      if (summaryPromptSaving) return;
+      const prompt = summaryPromptTextarea.value;
+      if (state.ws?.readyState !== WebSocket.OPEN) {
+        summaryPromptStatus.textContent = 'Нет подключения к серверу';
+        return;
+      }
+      summaryPromptSaving = true;
+      summaryPromptStatus.textContent = 'Сохранение...';
+      btnSaveSummaryPrompt.disabled = true;
+      state.ws.send(JSON.stringify({ action: 'summary_prompt_save', prompt: prompt }));
+    });
 
     // ── Keep connection alive ────────────────────────────────────
     setInterval(() => {

@@ -77,6 +77,11 @@ TTS_SPEAKER = "xenia"        # xenia | aidar | baya | kseniya | eugeny
 TTS_SAMPLE_RATE = 24000
 # ──────────────────────────────────────────────────────────────
 
+# Summary (суммаризация текста через LLM)
+SUMMARY_PROMPT_FILE = "summary_prompt.txt"          # файл для хранения системного промпта суммаризации
+DEFAULT_SUMMARY_PROMPT = "Ты – помощник, который кратко суммирует текст"
+# ──────────────────────────────────────────────────────────────
+
 # ── Загрузка конфигурации из .env ────────────────────────────
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), ".env")
@@ -208,6 +213,47 @@ def delete_prompt(name: str) -> bool:
     except Exception as e:
         log.error(f"Ошибка удаления промпта {name}: {e}")
         return False
+
+# ---------- Summary (суммаризация) ----------
+def get_summary_prompt() -> str:
+    """Читает системный промпт для суммаризации из файла.
+    Если файла нет — возвращает DEFAULT_SUMMARY_PROMPT."""
+    path = os.path.join(os.path.dirname(__file__), SUMMARY_PROMPT_FILE)
+    if not os.path.isfile(path):
+        log.info(f"Файл {SUMMARY_PROMPT_FILE} не найден, использую промпт по умолчанию.")
+        return DEFAULT_SUMMARY_PROMPT
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return content
+    except Exception as e:
+        log.error(f"Ошибка чтения {SUMMARY_PROMPT_FILE}: {e}")
+        return DEFAULT_SUMMARY_PROMPT
+
+
+def save_summary_prompt(prompt: str) -> bool:
+    """Сохраняет системный промпт для суммаризации в файл.
+    Возвращает True при успехе."""
+    path = os.path.join(os.path.dirname(__file__), SUMMARY_PROMPT_FILE)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        log.info(f"Системный промпт суммаризации сохранён в {SUMMARY_PROMPT_FILE}")
+        return True
+    except Exception as e:
+        log.error(f"Ошибка записи {SUMMARY_PROMPT_FILE}: {e}")
+        return False
+
+
+def call_summary_llm(text: str) -> dict:
+    """Формирует запрос к LLM для суммаризации текста.
+    Возвращает {'response': '...'} или {'error': '...'}."""
+    system_prompt = get_summary_prompt()
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": text}
+    ]
+    return call_llm_sync(messages)
 
 # ---------- Сертификат ----------
 CERT_FILE = "cert.pem"
@@ -778,6 +824,37 @@ async def handle_client(ws):
                             except Exception as e:
                                 log.error(f"Ошибка TTS: {e}")
                                 await ws.send(json.dumps({"type": "error", "text": f"Ошибка TTS: {e}"}))
+
+                    # ----- Суммаризация текста (summary) -----
+                    elif action == "summary_prompt_save":
+                        prompt = cmd.get("prompt", "")
+                        if not isinstance(prompt, str):
+                            await ws.send(json.dumps({"action": "summary_prompt_save", "status": "error", "message": "Поле 'prompt' должно быть строкой"}))
+                        else:
+                            ok = await asyncio.get_event_loop().run_in_executor(None, save_summary_prompt, prompt)
+                            if ok:
+                                await ws.send(json.dumps({"action": "summary_prompt_save", "status": "ok", "message": "Промпт суммаризации сохранён"}))
+                            else:
+                                await ws.send(json.dumps({"action": "summary_prompt_save", "status": "error", "message": "Ошибка сохранения промпта"}))
+
+                    elif action == "summary_prompt_get":
+                        prompt = await asyncio.get_event_loop().run_in_executor(None, get_summary_prompt)
+                        await ws.send(json.dumps({"action": "summary_prompt_get", "prompt": prompt}))
+
+                    elif action == "summary_get":
+                        text = cmd.get("text", "")
+                        if not isinstance(text, str) or not text.strip():
+                            await ws.send(json.dumps({"action": "summary_get", "error": "Поле 'text' не может быть пустым"}))
+                        else:
+                            try:
+                                result = await asyncio.get_event_loop().run_in_executor(None, call_summary_llm, text)
+                                if "response" in result:
+                                    await ws.send(json.dumps({"action": "summary_get", "summary": result["response"]}))
+                                else:
+                                    await ws.send(json.dumps({"action": "summary_get", "error": result.get("error", "Неизвестная ошибка LLM")}))
+                            except Exception as e:
+                                log.error(f"Ошибка суммаризации: {e}")
+                                await ws.send(json.dumps({"action": "summary_get", "error": str(e)}))
 
                 except json.JSONDecodeError:
                     pass
